@@ -4,6 +4,8 @@ const fs = require('fs');
 const { pathToFileURL } = require('url');
 const { createStore } = require('./store');
 const { createLogger } = require('./logger');
+const { createClock } = require('./clock');
+const { registerTestChannels } = require('./test-support');
 
 const SIZES = { full: { width: 340, height: 96 }, mini: { width: 156, height: 58 } };
 const PRESETS = {
@@ -60,6 +62,9 @@ function configureTestProfile() {
 configureTestProfile();
 
 const stateFile = () => path.join(app.getPath('userData'), 'ember.json');
+// One clock for the main process; the test channel moves its offset instead of
+// introducing a parallel time path. The timer service will consume this clock.
+const clock = createClock({ offsetMs: 0 });
 let state = { ...DEFAULTS, x: null, y: null, locked: false, tutorialSeen: false };
 let store = null;
 let logger = createLogger({});
@@ -309,6 +314,8 @@ else {
   app.whenReady().then(async () => {
     await initSettings();
     createWindow();
+    // Registers only when EMBER_TEST=1 and EMBER_USER_DATA are both set.
+    registerTestChannels({ ipcMain, clock, getWindow: () => win });
     globalShortcut.register('Control+Alt+P', () => (win.isVisible() ? win.hide() : win.show()));
     globalShortcut.register('Control+Alt+Space', () => win.webContents.send('command', 'toggle'));
     globalShortcut.register('Control+Alt+L', () => setLocked(!state.locked));

@@ -34,6 +34,7 @@ root.
 | `npm run test:watch`   | Re-run unit tests on change.                           |
 | `npm run test:cov`     | Run unit tests with V8 coverage and thresholds.        |
 | `npm run test:e2e`     | Run the Playwright launch tests against the real app.  |
+| `npm run test:visual`  | Run the visual regression suite (Windows baselines).   |
 | `npm run format`       | Prettier over the repository.                          |
 | `npm run format:check` | Verify formatting without writing.                     |
 | `npm run dist`         | Build the Windows portable exe into `dist/`.           |
@@ -70,6 +71,24 @@ reported problem and commit again; do not bypass the hook with
 - Coverage thresholds (80% overall, 95% on `src/core`) are a floor. Raising them
   is welcome; lowering them is not.
 - Do not commit `test.skip`, `.only` or disabled suites.
+
+### Visual baselines
+
+The visual suite compares 20 screenshots: the compact widget at 100 %, 125 %
+and 150 % scaling, in the idle, running and paused states, in the dusk and mono
+palettes, plus the settings window in both palettes. Baselines are committed and
+Windows-only; the suite is skipped on other platforms.
+
+When a change intentionally moves something visual:
+
+1. Run the suite on Windows with `npm run test:visual -- --update-snapshots`.
+2. Inspect every changed image; do not update a baseline you have not looked at.
+3. Commit the baselines in the same commit as the visual change and name the
+   affected cases in the commit message.
+
+A missing baseline fails the run instead of being written silently. The
+comparison tolerance is the single `MAX_DIFF_PIXEL_RATIO` constant in
+`test/visual/tolerance.js`.
 
 ## Pull requests
 

@@ -1,0 +1,39 @@
+name: Visual baselines
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  baselines:
+    name: Generate Windows baselines
+    runs-on: windows-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install the Playwright browser
+        run: npx playwright install chromium
+
+      - name: Generate baselines
+        run: npm run test:visual -- --update-snapshots
+
+      - name: Upload the baselines
+        uses: actions/upload-artifact@v4
+        with:
+          name: visual-baselines
+          path: test/visual/**/snapshots/**
+          if-no-files-found: error

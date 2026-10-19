@@ -40,7 +40,7 @@ module.exports = [
   },
   {
     files: ['test/**/*.js', 'playwright.config.js'],
-    languageOptions: { sourceType: 'module', globals: { ...globals.node } },
+    languageOptions: { sourceType: 'module', globals: { ...globals.node, ...globals.browser } },
   },
   {
     files: ['src/renderer/**/*.js'],

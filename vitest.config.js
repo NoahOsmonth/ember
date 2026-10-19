@@ -4,7 +4,7 @@ module.exports = defineConfig({
   test: {
     environment: 'jsdom',
     include: ['test/**/*.spec.js', 'test/**/*.test.js'],
-    exclude: ['test/e2e/**', 'node_modules/**', 'dist/**'],
+    exclude: ['test/e2e/**', 'test/visual/**', 'node_modules/**', 'dist/**'],
     // A green run means something actually ran: no empty-suite escape hatch.
     passWithNoTests: false,
     coverage: {
@@ -14,7 +14,13 @@ module.exports = defineConfig({
       // The pure core modules plus the main-process modules that have no
       // Electron dependency; the renderer and the window wiring are covered by
       // the e2e/visual harness instead.
-      include: ['src/core/**/*.js', 'src/main/store.js', 'src/main/logger.js'],
+      include: [
+        'src/core/**/*.js',
+        'src/main/store.js',
+        'src/main/logger.js',
+        'src/main/clock.js',
+        'src/main/test-support.js',
+      ],
       exclude: ['**/*.config.js', 'test/**'],
       thresholds: {
         lines: 80,

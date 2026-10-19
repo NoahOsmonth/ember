@@ -34,14 +34,36 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      - name: Keep test channels in one place
+        shell: bash
+        run: |
+          if git grep -nE "(ipcMain|ipcRenderer)\.(handle|on)\(['\"]test:" -- src ':!src/main/test-support.js'; then
+            echo "test: channels may only be registered in src/main/test-support.js" >&2
+            exit 1
+          fi
+
       - name: Typecheck
         run: npm run typecheck
 
       - name: Unit tests with coverage
         run: npm run test:cov
 
+      - name: Install the Playwright browser
+        run: npx playwright install chromium
+
       - name: Launch tests
         run: npm run test:e2e
+
+      - name: Visual regression tests
+        run: npm run test:visual
+
+      - name: Upload test artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: test-results/
+          if-no-files-found: ignore
 
       - name: Build the portable executable
         run: npm run dist
