@@ -33,6 +33,7 @@ root.
 | `npm test`             | Run the unit suite once.                               |
 | `npm run test:watch`   | Re-run unit tests on change.                           |
 | `npm run test:cov`     | Run unit tests with V8 coverage and thresholds.        |
+| `npm run test:e2e`     | Run the Playwright launch tests against the real app.  |
 | `npm run format`       | Prettier over the repository.                          |
 | `npm run format:check` | Verify formatting without writing.                     |
 | `npm run dist`         | Build the Windows portable exe into `dist/`.           |
