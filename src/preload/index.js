@@ -1,27 +1,92 @@
+'use strict';
+
+/**
+ * The explicit renderer API.
+ *
+ * One named method per channel, grouped by the channel's domain. There is no
+ * generic pass-through: a renderer cannot name a channel that this file does
+ * not name. Every invoke resolves to the registry's `{ ok, value }` /
+ * `{ ok: false, code }` envelope.
+ *
+ * This file stays self-contained because Electron sandboxes preload scripts:
+ * a relative `require` of another local file is not available inside the
+ * sandbox. The contract test evaluates this source with a fake `electron`.
+ */
+
 const { contextBridge, ipcRenderer } = require('electron');
 
-contextBridge.exposeInMainWorld('ember', {
-  getState: () => ipcRenderer.invoke('state:get'),
-  setState: (patch) => ipcRenderer.send('state:set', patch),
-  reset: () => ipcRenderer.send('state:reset'),
-  moveTo: (x, y) => ipcRenderer.send('win:move', x, y),
-  setMini: (mini) => ipcRenderer.send('win:mini', mini),
-  lock: () => ipcRenderer.send('win:lock'),
-  closeWindow: () => ipcRenderer.send('win:close'),
-  quit: () => ipcRenderer.send('app:quit'),
-  showMenu: () => ipcRenderer.send('menu:show'),
-  openSettings: (tab) => ipcRenderer.send('settings:open', tab),
-  onSettings: (cb) => ipcRenderer.on('settings', (_e, s) => cb(s)),
-  onCommand: (cb) => ipcRenderer.on('command', (_e, c) => cb(c)),
-  onTab: (cb) => ipcRenderer.on('tab', (_e, t) => cb(t)),
-  // Test-only surface. The prefix is enforced here so the renderer can never
-  // use this bridge to reach a production channel; release builds register no
-  // `test:` handler, so the invoke rejects with Electron's unknown-channel
-  // error. It answers nothing by itself.
-  invokeTest: (name, ...args) => {
-    if (typeof name !== 'string' || !name.startsWith('test:')) {
-      return Promise.reject(new Error('invokeTest only accepts test: channels'));
+const UNKNOWN_CHANNEL = /No handler registered/i;
+
+/**
+ * @param {{ invoke: Function, send: Function, on: Function }} renderer
+ */
+function createApi(renderer) {
+  /**
+   * @param {string} name
+   * @param {unknown} [payload]
+   */
+  async function invoke(name, payload) {
+    try {
+      return await renderer.invoke(name, payload);
+    } catch (error) {
+      const message = error && typeof error.message === 'string' ? error.message : String(error);
+      if (UNKNOWN_CHANNEL.test(message)) return { ok: false, code: 'unknown-channel' };
+      return { ok: false, code: 'handler-error' };
     }
-    return ipcRenderer.invoke(name, ...args);
-  },
-});
+  }
+
+  /**
+   * @param {string} name
+   * @param {unknown} [payload]
+   */
+  function send(name, payload) {
+    renderer.send(name, payload);
+  }
+
+  /**
+   * @param {string} name
+   * @param {(value: unknown) => void} callback
+   */
+  function on(name, callback) {
+    renderer.on(name, (_event, value) => callback(value));
+  }
+
+  return {
+    state: {
+      get: () => invoke('state:get'),
+      set: (patch) => invoke('state:set', patch),
+      reset: () => invoke('state:reset'),
+    },
+    win: {
+      move: (delta) => send('win:move', delta),
+      mini: (mini) => invoke('win:mini', { mini }),
+      lock: (locked) => invoke('win:lock', { locked }),
+      close: () => send('win:close'),
+    },
+    app: {
+      quit: () => send('app:quit'),
+    },
+    menu: {
+      show: () => send('menu:show'),
+    },
+    settings: {
+      open: (tab) => invoke('settings:open', tab === undefined ? undefined : { tab }),
+    },
+    // Explicit test-only methods. They are harmless in a release build: no
+    // handler is registered, so each resolves to `{ ok: false, code:
+    // 'unknown-channel' }`. The contract test excludes this namespace.
+    test: {
+      setClock: (iso) => invoke('test:setClock', iso),
+      advanceClock: (ms) => invoke('test:advanceClock', ms),
+      setBounds: (bounds) => invoke('test:setBounds', bounds),
+    },
+    onSettings: (callback) => on('settings', callback),
+    onCommand: (callback) => on('command', callback),
+    onTab: (callback) => on('tab', callback),
+  };
+}
+
+contextBridge.exposeInMainWorld('ember', createApi(ipcRenderer));
+
+// Available to the contract test when the source is evaluated outside Electron.
+if (typeof module !== 'undefined' && module.exports) module.exports = { createApi };

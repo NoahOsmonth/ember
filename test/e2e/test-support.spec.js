@@ -30,30 +30,23 @@ test('the clock channels move the application clock', async ({ ember }) => {
 });
 
 test('the bounds channel moves the widget window', async ({ ember }) => {
-  const bounds = await ember.page.evaluate(() =>
-    /** @type {any} */ (window).ember.invokeTest('test:setBounds', { x: 40, y: 50 })
+  const result = await ember.page.evaluate(() =>
+    /** @type {any} */ (window).ember.test.setBounds({ x: 40, y: 50 })
   );
-  expect(bounds.x).toBe(40);
-  expect(bounds.y).toBe(50);
-  expect(bounds.width).toBeGreaterThan(0);
-  expect(bounds.height).toBeGreaterThan(0);
+  expect(result.ok).toBe(true);
+  expect(result.value.x).toBe(40);
+  expect(result.value.y).toBe(50);
+  expect(result.value.width).toBeGreaterThan(0);
+  expect(result.value.height).toBeGreaterThan(0);
 });
 
 test('a release launch answers no test channel', async () => {
   const ember = await launchEmber({ testMode: false });
   try {
-    const message = await ember.page.evaluate(async () => {
-      try {
-        await /** @type {any} */ (window).ember.invokeTest(
-          'test:setClock',
-          new Date().toISOString()
-        );
-        return 'answered';
-      } catch (error) {
-        return String((error && error.message) || error);
-      }
-    });
-    expect(message).toContain("No handler registered for 'test:setClock'");
+    const result = await ember.page.evaluate(() =>
+      /** @type {any} */ (window).ember.test.setClock(new Date().toISOString())
+    );
+    expect(result).toEqual({ ok: false, code: 'unknown-channel' });
   } finally {
     await ember.close();
   }

@@ -37,11 +37,38 @@ import { computeRuler } from '../../core/ruler.js';
 import { barColor } from '../../core/themes.js';
 
 (() => {
-  // Falls back to a stub so index.html also previews in a plain browser.
+  // Falls back to a stub so index.html also previews in a plain browser. The
+  // stub returns the same `{ ok, value }` envelopes as the real preload API.
   const api = window.ember || {
-    getState: async () => ({ ...DEFAULTS }),
-    setState() {}, moveTo() {}, setMini() {}, showMenu() {}, openSettings() {}, onSettings() {}, onCommand() {},
+    state: {
+      get: async () => ({ ok: true, value: { ...DEFAULTS } }),
+      set: async () => ({ ok: true, value: undefined }),
+      reset: async () => ({ ok: true, value: { ...DEFAULTS } }),
+    },
+    win: {
+      move() {},
+      mini: async () => ({ ok: true, value: undefined }),
+      lock: async () => ({ ok: true, value: undefined }),
+      close() {},
+    },
+    app: { quit() {} },
+    menu: { show() {} },
+    settings: { open: async () => ({ ok: true, value: undefined }) },
+    onSettings() {},
+    onCommand() {},
+    onTab() {},
   };
+
+  // Unwrap the registry envelope once. A failed call is logged and leaves the
+  // renderer running; it never becomes an unhandled rejection.
+  async function call(method, ...args) {
+    const result = await method(...args);
+    if (!result || result.ok !== true) {
+      console.error('ember ipc failed', result);
+      return undefined;
+    }
+    return result.value;
+  }
 
   const LABEL = { focus: 'focus', short: 'short break', long: 'long break' };
   const $ = id => document.getElementById(id);
@@ -160,28 +187,37 @@ import { barColor } from '../../core/themes.js';
   $('bPlay').addEventListener('click', toggle);
   $('bSkip').addEventListener('click', () => advance(false));
   $('bReset').addEventListener('click', resetPhase);
-  $('bSettings').addEventListener('click', () => api.openSettings('settings'));
+  $('bSettings').addEventListener('click', () => call(api.settings.open, 'settings'));
 
   addEventListener('keydown', e => {
     if (e.code === 'Space') { e.preventDefault(); toggle(); }
     else if (e.key === 'r' || e.key === 'R') resetPhase();
     else if (e.key === 's' || e.key === 'S') advance(false);
-    else if (e.key === 'm' || e.key === 'M') api.setMini(!cfg.mini);
+    else if (e.key === 'm' || e.key === 'M') call(api.win.mini, !cfg.mini);
   });
 
-  // drag from anywhere that isn't a control (own drag, so right-click and wheel keep working)
+  // drag from anywhere that isn't a control (own drag, so right-click and wheel keep working).
+  // The window moves by pointer deltas: `win:move` is a send channel, so a drag
+  // never waits on a round trip.
   let drag = null;
   addEventListener('pointerdown', e => {
     if (e.button !== 0 || e.target.closest('button') || e.target.closest('.digits')) return;
-    drag = { sx: e.screenX, sy: e.screenY, wx: window.screenX, wy: window.screenY };
+    drag = { sx: e.screenX, sy: e.screenY };
     document.body.setPointerCapture?.(e.pointerId);
   });
   addEventListener('pointermove', e => {
-    if (drag) api.moveTo(drag.wx + e.screenX - drag.sx, drag.wy + e.screenY - drag.sy);
+    if (!drag) return;
+    const dx = e.screenX - drag.sx;
+    const dy = e.screenY - drag.sy;
+    if (dx || dy) {
+      api.win.move({ dx, dy });
+      drag.sx = e.screenX;
+      drag.sy = e.screenY;
+    }
   });
   addEventListener('pointerup', () => { drag = null; });
-  addEventListener('dblclick', e => { if (!e.target.closest('button, .digits')) api.setMini(!cfg.mini); });
-  addEventListener('contextmenu', e => { e.preventDefault(); api.showMenu(); });
+  addEventListener('dblclick', e => { if (!e.target.closest('button, .digits')) call(api.win.mini, !cfg.mini); });
+  addEventListener('contextmenu', e => { e.preventDefault(); api.menu.show(); });
 
   // wheel over the widget: glass opacity
   let opTimer;
@@ -190,7 +226,7 @@ import { barColor } from '../../core/themes.js';
     cfg.opacity = Math.max(.12, Math.min(.96, +(cfg.opacity + (e.deltaY < 0 ? .05 : -.05)).toFixed(2)));
     document.documentElement.style.setProperty('--a', cfg.opacity);
     flash('glass ' + Math.round(cfg.opacity * 100) + '%');
-    clearTimeout(opTimer); opTimer = setTimeout(() => api.setState({ opacity: cfg.opacity }), 300);
+    clearTimeout(opTimer); opTimer = setTimeout(() => call(api.state.set, { opacity: cfg.opacity }), 300);
   }, { passive: false });
 
   function applySettings(s) {
@@ -220,8 +256,8 @@ import { barColor } from '../../core/themes.js';
 
   api.onSettings(applySettings);
   api.onCommand(c => { if (c === 'toggle') toggle(); });
-  api.getState().then(s => {
-    cfg = { ...cfg, ...s };
+  call(api.state.get).then(s => {
+    if (s) cfg = { ...cfg, ...s };
     document.documentElement.style.setProperty('--a', cfg.opacity);
     if (!demo()) setPhase('focus');
     if (cfg.settingsRecovered) { announcedRecovery = true; flash('settings reset', 4000); }

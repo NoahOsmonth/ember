@@ -243,15 +243,43 @@ import * as C from '../shared/common.js';
   const $ = (s, r = document) => r.querySelector(s);
   const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 
-  // plain-browser stub so this page also previews outside Electron
+  // plain-browser stub so this page also previews outside Electron; it returns
+  // the same envelopes as the real preload API.
   let stubCfg = { ...C.DEFAULTS, launch: false, locked: false };
   const stubCbs = [];
   const api = window.ember || {
-    getState: async () => stubCfg,
-    setState(p) { stubCfg = { ...stubCfg, ...p }; },
-    reset() { stubCfg = { ...C.DEFAULTS, launch: false, locked: false }; stubCbs.forEach(f => f(stubCfg)); },
-    moveTo() {}, setMini() {}, lock() {}, quit() {}, closeWindow() {}, onSettings: f => stubCbs.push(f), onTab() {},
+    state: {
+      get: async () => ({ ok: true, value: { ...stubCfg } }),
+      set: async (p) => { stubCfg = { ...stubCfg, ...p }; return { ok: true, value: stubCfg }; },
+      reset: async () => {
+        stubCfg = { ...C.DEFAULTS, launch: false, locked: false };
+        stubCbs.forEach(f => f(stubCfg));
+        return { ok: true, value: stubCfg };
+      },
+    },
+    win: {
+      move() {},
+      mini: async () => ({ ok: true, value: undefined }),
+      lock: async () => ({ ok: true, value: undefined }),
+      close() {},
+    },
+    app: { quit() {} },
+    menu: { show() {} },
+    settings: { open: async () => ({ ok: true, value: undefined }) },
+    onSettings: f => stubCbs.push(f),
+    onTab() {},
   };
+
+  // Unwrap the registry envelope once; a failed call is logged and the window
+  // keeps running.
+  async function call(method, ...args) {
+    const result = await method(...args);
+    if (!result || result.ok !== true) {
+      console.error('ember ipc failed', result);
+      return undefined;
+    }
+    return result.value;
+  }
 
   let cfg = { ...C.DEFAULTS, launch: false };
 
@@ -277,18 +305,27 @@ import * as C from '../shared/common.js';
   let drag = null;
   $('#head').addEventListener('pointerdown', e => {
     if (e.button !== 0 || e.target.closest('button')) return;
-    drag = { sx: e.screenX, sy: e.screenY, wx: window.screenX, wy: window.screenY };
+    drag = { sx: e.screenX, sy: e.screenY };
     $('#head').setPointerCapture?.(e.pointerId);
   });
-  $('#head').addEventListener('pointermove', e => { if (drag) api.moveTo(drag.wx + e.screenX - drag.sx, drag.wy + e.screenY - drag.sy); });
+  $('#head').addEventListener('pointermove', e => {
+    if (!drag) return;
+    const dx = e.screenX - drag.sx;
+    const dy = e.screenY - drag.sy;
+    if (dx || dy) {
+      api.win.move({ dx, dy });
+      drag.sx = e.screenX;
+      drag.sy = e.screenY;
+    }
+  });
   $('#head').addEventListener('pointerup', () => { drag = null; });
-  $('#close').addEventListener('click', () => api.closeWindow?.());
-  addEventListener('keydown', e => { if (e.key === 'Escape') api.closeWindow?.(); });
+  $('#close').addEventListener('click', () => api.win.close());
+  addEventListener('keydown', e => { if (e.key === 'Escape') api.win.close(); });
 
   /* ---------- settings ---------- */
   function set(patch) {
     cfg = { ...cfg, ...patch };
-    api.setState(patch);
+    call(api.state.set, patch);
     paint();
   }
 
@@ -337,17 +374,17 @@ import * as C from '../shared/common.js';
   // switches
   $$('.s-sw').forEach(sw => sw.addEventListener('click', () => {
     const k = sw.dataset.key, v = !cfg[k];
-    if (k === 'mini') { cfg.mini = v; api.setMini?.(v); paint(); } else set({ [k]: v });
+    if (k === 'mini') { cfg.mini = v; call(api.win.mini, v); paint(); } else set({ [k]: v });
   }));
 
   // sliders
   $$('input[type="range"]').forEach(r => r.addEventListener('input', () => set({ [r.dataset.key]: +r.value / 100 })));
 
   $('#test').addEventListener('click', () => C.chime('focus', cfg.volume));
-  $('#lock').addEventListener('click', () => api.lock?.());
+  $('#lock').addEventListener('click', () => call(api.win.lock, true));
   $('#replay').addEventListener('click', () => switchTab('tutorial'));
-  $('#reset').addEventListener('click', () => api.reset?.());
-  $('#quit').addEventListener('click', () => api.quit?.());
+  $('#reset').addEventListener('click', () => call(api.state.reset));
+  $('#quit').addEventListener('click', () => api.app.quit());
 
   function paint() {
     const d = cfg.durations;
@@ -567,7 +604,7 @@ import * as C from '../shared/common.js';
   })();
 
   /* ---------- boot ---------- */
-  api.getState().then(s => { cfg = { ...cfg, ...s }; paint(); });
+  call(api.state.get).then(s => { if (s) { cfg = { ...cfg, ...s }; paint(); } });
   const q = new URLSearchParams(location.search).get('tab');
   paint();
   addEventListener('load', () => { placePill(); if (q === 'tutorial') switchTab('tutorial'); });

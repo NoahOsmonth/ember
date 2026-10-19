@@ -8,6 +8,13 @@
  * once `src/main/power.js` has a resume handler to call.
  */
 
+function unwrap(result, channel) {
+  if (!result || result.ok !== true) {
+    throw new Error(`${channel} failed: ${JSON.stringify(result)}`);
+  }
+  return result.value;
+}
+
 /**
  * @param {import('@playwright/test').Page} page
  * @param {string|Date} instant
@@ -15,10 +22,11 @@
  */
 async function setClock(page, instant) {
   const iso = instant instanceof Date ? instant.toISOString() : String(instant);
-  return page.evaluate(
-    (value) => /** @type {any} */ (window).ember.invokeTest('test:setClock', value),
+  const result = await page.evaluate(
+    (value) => /** @type {any} */ (window).ember.test.setClock(value),
     iso
   );
+  return unwrap(result, 'test:setClock');
 }
 
 /**
@@ -27,10 +35,11 @@ async function setClock(page, instant) {
  * @returns {Promise<string>} the clock value, as an ISO timestamp
  */
 async function advanceClock(page, ms) {
-  return page.evaluate(
-    (delta) => /** @type {any} */ (window).ember.invokeTest('test:advanceClock', delta),
+  const result = await page.evaluate(
+    (delta) => /** @type {any} */ (window).ember.test.advanceClock(delta),
     ms
   );
+  return unwrap(result, 'test:advanceClock');
 }
 
 module.exports = { advanceClock, setClock };

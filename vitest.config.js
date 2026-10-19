@@ -19,6 +19,8 @@ module.exports = defineConfig({
         'src/main/store.js',
         'src/main/logger.js',
         'src/main/clock.js',
+        'src/main/ipc.js',
+        'src/main/channels.js',
         'src/main/test-support.js',
       ],
       exclude: ['**/*.config.js', 'test/**'],

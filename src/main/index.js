@@ -5,6 +5,8 @@ const { pathToFileURL } = require('url');
 const { createStore } = require('./store');
 const { createLogger } = require('./logger');
 const { createClock } = require('./clock');
+const { createRegistry } = require('./ipc');
+const { channelSpecs } = require('./channels');
 const { registerTestChannels } = require('./test-support');
 
 const SIZES = { full: { width: 340, height: 96 }, mini: { width: 156, height: 58 } };
@@ -271,37 +273,67 @@ function showMenu() {
 
 const fromEvent = (e) => BrowserWindow.fromWebContents(e.sender);
 
-ipcMain.handle('state:get', () => publicState());
-ipcMain.on('state:set', (e, patch) => {
-  const { launch, ...rest } = patch;
-  state = { ...state, ...rest };
-  if ('onTop' in rest) win.setAlwaysOnTop(!!rest.onTop, 'screen-saver');
-  if (launch !== undefined) app.setLoginItemSettings({ openAtLogin: !!launch });
-  save();
-  broadcast(fromEvent(e));
-});
-ipcMain.on('state:reset', () => {
-  const keepMini = state.mini;
-  state = { ...state, ...DEFAULTS, locked: state.locked };
-  win.setAlwaysOnTop(true, 'screen-saver');
-  if (keepMini !== state.mini) setMini(state.mini);
-  else {
-    save();
-    broadcast();
+/**
+ * Declare every channel once, with its schema, and register the surface.
+ *
+ * `src/core` is ESM, so the validator is imported dynamically and injected into
+ * the CommonJS registry. The renderer never sees an unvalidated payload: the
+ * registry checks it before the handler runs.
+ */
+async function initIpc() {
+  const validateUrl = pathToFileURL(path.join(__dirname, '../core/validate.js')).href;
+  const { v } = await import(validateUrl);
+  const registry = createRegistry({ logger });
+
+  const handlers = {
+    'state:get': () => publicState(),
+    'state:set': (patch, event) => {
+      const { launch, ...rest } = patch;
+      state = { ...state, ...rest };
+      if ('onTop' in rest) win.setAlwaysOnTop(!!rest.onTop, 'screen-saver');
+      if (launch !== undefined) app.setLoginItemSettings({ openAtLogin: !!launch });
+      save();
+      broadcast(fromEvent(event));
+      return publicState();
+    },
+    'state:reset': () => {
+      const keepMini = state.mini;
+      state = { ...state, ...DEFAULTS, locked: state.locked };
+      win.setAlwaysOnTop(true, 'screen-saver');
+      if (keepMini !== state.mini) setMini(state.mini);
+      else {
+        save();
+        broadcast();
+      }
+      return publicState();
+    },
+    'win:move': ({ dx, dy }, event) => {
+      const w = fromEvent(event);
+      if (!w) return;
+      const b = w.getBounds();
+      w.setBounds({
+        x: Math.round(b.x + dx),
+        y: Math.round(b.y + dy),
+        width: b.width,
+        height: b.height,
+      });
+    },
+    'win:mini': ({ mini }) => setMini(mini),
+    'win:lock': ({ locked }) => setLocked(locked),
+    'win:close': (_payload, event) => fromEvent(event)?.close(),
+    'app:quit': () => app.quit(),
+    'menu:show': () => showMenu(),
+    'settings:open': (payload) => openSettings(payload && payload.tab),
+  };
+
+  for (const spec of channelSpecs(v)) {
+    registry.defineChannel({ ...spec, handler: handlers[spec.name] });
   }
-});
-ipcMain.on('win:move', (e, x, y) => {
-  const w = fromEvent(e);
-  if (!w) return;
-  const b = w.getBounds();
-  w.setBounds({ x: Math.round(x), y: Math.round(y), width: b.width, height: b.height });
-});
-ipcMain.on('win:mini', (_e, mini) => setMini(!!mini));
-ipcMain.on('win:lock', () => setLocked(true));
-ipcMain.on('win:close', (e) => fromEvent(e)?.close());
-ipcMain.on('app:quit', () => app.quit());
-ipcMain.on('menu:show', showMenu);
-ipcMain.on('settings:open', (_e, tab) => openSettings(tab));
+
+  registry.register(ipcMain);
+  logger.info(`ipc registry: ${registry.describe().length} channels`);
+  return registry;
+}
 
 if (!app.requestSingleInstanceLock()) app.quit();
 else {
@@ -313,6 +345,7 @@ else {
   });
   app.whenReady().then(async () => {
     await initSettings();
+    await initIpc();
     createWindow();
     // Registers only when EMBER_TEST=1 and EMBER_USER_DATA are both set.
     registerTestChannels({ ipcMain, clock, getWindow: () => win });

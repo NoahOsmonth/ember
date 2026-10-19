@@ -35,5 +35,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: visual-baselines
-          path: test/visual/**/snapshots/**
+          path: test/visual/**/*-snapshots/**
           if-no-files-found: error
