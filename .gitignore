@@ -1,0 +1,24 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+out/
+
+# Test and coverage artifacts
+coverage/
+test-results/
+playwright-report/
+
+# Logs
+logs/
+*.log
+
+# Local agent tooling state
+.dsh/
+.hormachuelos/
+
+# OS junk
+.DS_Store
+Thumbs.db
+desktop.ini
