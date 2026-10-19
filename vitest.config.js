@@ -11,9 +11,9 @@ module.exports = defineConfig({
       provider: 'v8',
       reporter: ['text', 'html', 'lcov'],
       reportsDirectory: 'coverage',
-      // The pure core modules plus the main-process modules that have no
-      // Electron dependency; the renderer and the window wiring are covered by
-      // the e2e/visual harness instead.
+      // The pure core modules, the main-process modules that have no Electron
+      // dependency, and the renderer modules. The window wiring itself is
+      // covered by the e2e/visual harness instead.
       include: [
         'src/core/**/*.js',
         'src/main/store.js',
@@ -23,6 +23,8 @@ module.exports = defineConfig({
         'src/main/channels.js',
         'src/main/test-support.js',
         'src/main/timer-service.js',
+        'src/main/security.js',
+        'src/renderer/**/*.js',
       ],
       exclude: ['**/*.config.js', 'test/**'],
       thresholds: {

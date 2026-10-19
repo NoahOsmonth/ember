@@ -25,7 +25,11 @@ async function launchEmber({ testMode = true, env = {}, userDataDir: providedDir
   delete baseEnv.EMBER_TEST;
   delete baseEnv.EMBER_USER_DATA;
 
-  const args = ['.'];
+  // Local escape hatch for hosts where Chromium's OS sandbox cannot start
+  // (Windows 11 build 26300 crashes Electron 33 before the app loads). CI
+  // leaves this unset, so the shipped sandbox configuration is what runs there.
+  const extra = (process.env.EMBER_E2E_ELECTRON_ARGS || '').split(/\s+/).filter(Boolean);
+  const args = ['.', ...extra];
   if (testMode) {
     baseEnv.EMBER_TEST = '1';
     baseEnv.EMBER_USER_DATA = userDataDir;

@@ -1,0 +1,9 @@
+{
+  "rendererPercent": 0.74,
+  "windowMs": 60000,
+  "rendererProcesses": 1,
+  "platform": "win32",
+  "electron": "33.4.11",
+  "measuredAt": "2026-10-19",
+  "note": "Paused widget, tutorial window closed, measured with scripts/measure-idle-cpu.js. The check fails when a later run exceeds this value by more than one percentage point."
+}

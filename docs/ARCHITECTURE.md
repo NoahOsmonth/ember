@@ -16,12 +16,18 @@ src/
   main/test-support.js          test-only IPC channels, registered only in test mode
   main/store.js                 durable settings store: validation, atomic writes, recovery
   main/logger.js                rotating diagnostic log that never throws
+  main/security.js              hardened webPreferences, navigation guards, openExternal allowlist
   preload/index.js              explicit contextBridge surface exposed as window.ember
   renderer/
-    widget/index.html           the always-on-top timer strip
+    widget/index.html           the always-on-top timer strip (markup + CSP only)
+    widget/widget.js            ES module: paints snapshots, forwards every action as IPC
     widget/widget.css           widget and settings styling
-    settings/index.html         settings + tutorial window
+    settings/index.html         settings + tutorial window (markup + CSP only)
+    settings/settings.js        ES module: form state, presets, tutorial carousel
     shared/common.js            ES module facade over core: presets, defaults, chime, re-exports
+    shared/dom.js               el(), on(), text(), setStyle() — the only DOM helpers
+    shared/strings.js           every user-visible string, plus phase/status labels
+    shared/scheduler.js         createScheduler(): 1 Hz ticks and on-demand rAF frames
   core/                         pure ES modules (timer, settings schema, ruler geometry, palettes)
     package.json                declares "type": "module" for this subtree only
     schema.js                   versioned settings document: defaults, limits, migrations, normalize()
@@ -102,6 +108,31 @@ the first `timer:subscribe`, and forwards `phase-complete` to the notification
 hook. The widget only renders snapshots and sends commands; a reload re-reads
 the snapshot from the service.
 
+## Renderer security and scheduling
+
+Every window is created through `src/main/security.js`, which states all four
+preferences explicitly: `sandbox: true`, `contextIsolation: true`,
+`nodeIntegration: false`, `webviewTag: false`. The same module installs two
+guards per window: `will-navigate` cancels anything except a reload of the same
+`file:` path (query strings are allowed, so `?tab=tutorial` works), and
+`setWindowOpenHandler` denies every `window.open`. `openExternal(url)` is the
+only path to the OS browser and accepts only `https:` and `mailto:`.
+
+Each HTML page carries the same CSP as a meta tag:
+`default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline';
+img-src 'self' data:`. There are no inline scripts and no `on*` attributes; the
+pages load their ES module with `<script type="module">`.
+
+Painting is driven by `src/renderer/shared/scheduler.js`:
+
+- a 1 Hz tick updates the digits, and only while the status is `running`;
+- a requestAnimationFrame loop repaints bars and the fuse only while a value
+  actually differs from the last painted one;
+- both loops stop on `paused`, `idle` and `done`, so a paused window is
+  effectively static. `scripts/measure-idle-cpu.js` measures that floor and
+  compares it with `test/fixtures/idle-cpu-baseline.json` (one percentage point
+  of tolerance).
+
 ## IPC channels
 
 Every channel is declared once in `src/main/channels.js` with a name, a kind, a
@@ -139,8 +170,9 @@ last one, so a drifted surface resolves instead of rejecting.
 
 - **`src/core` stays pure.** No Electron, no DOM, no ambient clock, no file or
   network access. Time and persistence are passed in. See `src/core/README.md`.
-- **Module formats are fixed per subtree.** `src/core` is ESM; the Electron entry
-  points and the renderer scripts stay CommonJS/classic scripts. See
+- **Module formats are fixed per subtree.** `src/core` and the renderer modules
+  are ESM; the Electron entry points (`src/main`, `src/preload`) stay CommonJS.
+  The root package has no `"type": "module"`. See
   `docs/adr/0004-core-module-format.md`.
 - **The main process owns persisted state.** Renderers request changes; they
   never write the state file.

@@ -9,6 +9,7 @@ const { createRegistry } = require('./ipc');
 const { channelSpecs } = require('./channels');
 const { registerTestChannels } = require('./test-support');
 const { createTimerService } = require('./timer-service');
+const { WEB_PREFERENCES, hardenWindow } = require('./security');
 
 const SIZES = { full: { width: 340, height: 96 }, mini: { width: 156, height: 58 } };
 const PRESETS = {
@@ -229,10 +230,11 @@ function createWindow() {
     alwaysOnTop: true,
     title: 'Ember',
     webPreferences: {
+      ...WEB_PREFERENCES,
       preload: path.join(__dirname, '../preload/index.js'),
-      contextIsolation: true,
     },
   });
+  hardenWindow(win, { file: path.join(__dirname, '../renderer/widget/index.html') });
   win.setAlwaysOnTop(state.onTop, 'screen-saver');
   win.loadFile('src/renderer/widget/index.html');
   win.webContents.on('did-finish-load', () => {
@@ -277,10 +279,11 @@ function openSettings(tab = 'settings') {
     hasShadow: false,
     title: 'Ember settings',
     webPreferences: {
+      ...WEB_PREFERENCES,
       preload: path.join(__dirname, '../preload/index.js'),
-      contextIsolation: true,
     },
   });
+  hardenWindow(settingsWin, { file: path.join(__dirname, '../renderer/settings/index.html') });
   settingsWin.setAlwaysOnTop(true, 'screen-saver');
   settingsWin.loadFile('src/renderer/settings/index.html', { query: { tab } });
   settingsWin.on('closed', () => {
