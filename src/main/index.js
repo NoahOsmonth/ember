@@ -19,9 +19,9 @@ const { registerTestChannels } = require('./test-support');
 const { createTimerService } = require('./timer-service');
 const { createPowerWatcher } = require('./power');
 const { createShortcuts } = require('./shortcuts');
+const { createWidgetWindow } = require('./windows/widget-window');
 const { WEB_PREFERENCES, hardenWindow } = require('./security');
 
-const SIZES = { full: { width: 340, height: 96 }, mini: { width: 156, height: 58 } };
 const PRESETS = {
   classic: { focus: 25, short: 5, long: 15 },
   deep: { focus: 50, short: 10, long: 30 },
@@ -79,16 +79,17 @@ const stateFile = () => path.join(app.getPath('userData'), 'ember.json');
 // One clock for the main process; the test channel moves its offset instead of
 // introducing a parallel time path. The timer service will consume this clock.
 const clock = createClock({ offsetMs: 0 });
-let state = { ...DEFAULTS, x: null, y: null, locked: false, tutorialSeen: false };
+let state = { ...DEFAULTS, placement: null, locked: false, tutorialSeen: false };
 let store = null;
 let logger = createLogger({});
 let timerService = null;
 let powerWatcher = null;
 let shortcuts = null;
+let widget = null;
 let win, settingsWin;
 
 /** Everything the settings document owns; `locked` is deliberately not persisted. */
-const PERSISTED_KEYS = Object.keys(DEFAULTS).concat(['x', 'y', 'tutorialSeen']);
+const PERSISTED_KEYS = Object.keys(DEFAULTS).concat(['placement', 'tutorialSeen']);
 
 function persisted() {
   const patch = {};
@@ -251,108 +252,64 @@ async function initShortcuts() {
   }
 }
 
-function startPosition(size) {
-  const area = screen.getPrimaryDisplay().workArea;
-  const def = { x: area.x + area.width - size.width - 24, y: area.y + 24 };
-  if (state.x == null) return def;
-  const visible = screen.getAllDisplays().some((d) => {
-    const a = d.workArea;
-    return (
-      state.x + 40 > a.x &&
-      state.x < a.x + a.width - 40 &&
-      state.y > a.y - 10 &&
-      state.y < a.y + a.height - 40
-    );
-  });
-  return visible ? { x: state.x, y: state.y } : def;
-}
-
 /**
- * Keep the widget inside the work area it currently overlaps.
- *
- * Change 11 moves this clamp into `src/core/placement.js`; until then the
- * display-change handler needs a local, side-effect-free version.
+ * Construct the widget window owner. The geometry module is ESM, so it is
+ * imported here and injected; everything that touches placement arithmetic
+ * then goes through one place.
  */
-function reclampWidget() {
-  if (!win || win.isDestroyed()) return;
-  const bounds = win.getBounds();
-  const area = screen.getDisplayMatching(bounds).workArea;
-  const x = Math.min(Math.max(bounds.x, area.x), area.x + area.width - bounds.width);
-  const y = Math.min(Math.max(bounds.y, area.y), area.y + area.height - bounds.height);
-  if (x !== bounds.x || y !== bounds.y) {
-    win.setBounds({ x, y, width: bounds.width, height: bounds.height });
-  }
+async function initWidget() {
+  const placementUrl = pathToFileURL(path.join(__dirname, '../core/placement.js')).href;
+  const geometry = await import(placementUrl);
+  widget = createWidgetWindow({
+    screen,
+    geometry,
+    settings: () => state,
+    persist: (patch) => {
+      state = { ...state, ...patch };
+      save();
+      broadcast();
+    },
+    preload: path.join(__dirname, '../preload/index.js'),
+    page: path.join(__dirname, '../renderer/widget/index.html'),
+    logger,
+    onReady: (window) => {
+      window.webContents.send('settings', publicState());
+      if (!state.tutorialSeen) {
+        state.tutorialSeen = true;
+        save();
+        openSettings('tutorial');
+      }
+    },
+    onClosed: () => {
+      win = null;
+      app.quit();
+    },
+  });
 }
 
 /** Reassert the window level after unlock or a display change. */
 function reassertWindows() {
   if (win && !win.isDestroyed()) {
     win.setAlwaysOnTop(state.onTop, 'screen-saver');
-    reclampWidget();
   }
+  if (widget) widget.clamp();
   if (settingsWin && !settingsWin.isDestroyed()) {
     settingsWin.setAlwaysOnTop(true, 'screen-saver');
   }
 }
 
 function setMini(mini) {
-  state.mini = mini;
-  const b = win.getBounds();
-  const s = mini ? SIZES.mini : SIZES.full;
-  // keep the right edge anchored so it collapses toward the corner it sits in
-  win.setBounds({ x: b.x + b.width - s.width, y: b.y, width: s.width, height: s.height });
-  state.x = win.getBounds().x;
-  state.y = win.getBounds().y;
-  save();
-  broadcast();
+  return widget ? widget.setMini(mini) : null;
 }
 
 function setLocked(locked) {
   state.locked = locked;
-  win.setIgnoreMouseEvents(locked, { forward: true });
+  if (win && !win.isDestroyed()) win.setIgnoreMouseEvents(locked, { forward: true });
   broadcast();
 }
 
 function createWindow() {
-  const size = state.mini ? SIZES.mini : SIZES.full;
-  const pos = startPosition(size);
-  win = new BrowserWindow({
-    ...size,
-    ...pos,
-    frame: false,
-    transparent: true,
-    backgroundColor: '#00000000',
-    resizable: false,
-    maximizable: false,
-    minimizable: false,
-    fullscreenable: false,
-    skipTaskbar: true,
-    hasShadow: false,
-    alwaysOnTop: true,
-    title: 'Ember',
-    webPreferences: {
-      ...WEB_PREFERENCES,
-      preload: path.join(__dirname, '../preload/index.js'),
-    },
-  });
-  hardenWindow(win, { file: path.join(__dirname, '../renderer/widget/index.html') });
-  win.setAlwaysOnTop(state.onTop, 'screen-saver');
-  win.loadFile('src/renderer/widget/index.html');
-  win.webContents.on('did-finish-load', () => {
-    win.webContents.send('settings', publicState());
-    if (!state.tutorialSeen) {
-      state.tutorialSeen = true;
-      save();
-      openSettings('tutorial');
-    }
-  });
-  win.on('move', () => {
-    const b = win.getBounds();
-    state.x = b.x;
-    state.y = b.y;
-    save();
-  });
-  win.on('closed', () => app.quit());
+  if (widget) win = widget.create();
 }
 
 function openSettings(tab = 'settings') {
@@ -362,7 +319,10 @@ function openSettings(tab = 'settings') {
     settingsWin.webContents.send('tab', tab);
     return;
   }
-  const area = screen.getDisplayMatching(win.getBounds()).workArea;
+  const bounds = win && !win.isDestroyed() ? win.getBounds() : null;
+  const area = bounds
+    ? screen.getDisplayMatching(bounds).workArea
+    : screen.getPrimaryDisplay().workArea;
   const w = 460,
     h = Math.min(640, area.height - 40);
   settingsWin = new BrowserWindow({
@@ -422,7 +382,7 @@ function showMenu() {
     { type: 'separator' },
     { label: 'Quit Ember', click: () => app.quit() },
   ]);
-  menu.popup({ window: win });
+  menu.popup(win && !win.isDestroyed() ? { window: win } : {});
 }
 
 const fromEvent = (e) => BrowserWindow.fromWebContents(e.sender);
@@ -445,7 +405,9 @@ async function initIpc() {
       const previous = state;
       const { launch, ...rest } = patch;
       state = { ...state, ...rest };
-      if ('onTop' in rest) win.setAlwaysOnTop(!!rest.onTop, 'screen-saver');
+      if ('onTop' in rest && win && !win.isDestroyed()) {
+        win.setAlwaysOnTop(!!rest.onTop, 'screen-saver');
+      }
       if (launch !== undefined) app.setLoginItemSettings({ openAtLogin: !!launch });
       save();
       if (timerSettingsChanged(previous, state)) timerService?.applySettings(state);
@@ -456,16 +418,27 @@ async function initIpc() {
       const previous = state;
       const keepMini = state.mini;
       state = { ...state, ...DEFAULTS, locked: state.locked };
-      win.setAlwaysOnTop(true, 'screen-saver');
+      if (win && !win.isDestroyed()) win.setAlwaysOnTop(true, 'screen-saver');
       save();
       if (timerSettingsChanged(previous, state)) timerService?.applySettings(state);
       if (keepMini !== state.mini) setMini(state.mini);
       else broadcast();
       return publicState();
     },
+    'win:dragStart': (point, event) => {
+      if (widget && fromEvent(event) === win) widget.startDrag(point);
+    },
+    'win:dragEnd': (_payload, event) => {
+      if (widget && fromEvent(event) === win) widget.endDrag();
+    },
+    'win:dock': () => (widget ? widget.dock() : null),
+    'win:setScale': ({ scaleFactor }) => {
+      if (win && !win.isDestroyed()) win.webContents.setZoomFactor(scaleFactor);
+      return { scaleFactor };
+    },
     'win:move': ({ dx, dy }, event) => {
       const w = fromEvent(event);
-      if (!w) return;
+      if (!w || w.isDestroyed()) return;
       const b = w.getBounds();
       w.setBounds({
         x: Math.round(b.x + dx),
@@ -525,6 +498,7 @@ else {
     await initSettings();
     await initTimer();
     await initShortcuts();
+    await initWidget();
     await initIpc();
     createWindow();
     powerWatcher = createPowerWatcher({
@@ -541,15 +515,20 @@ else {
       clock,
       getWindow: () => win,
       suspend: (ms) => (powerWatcher ? powerWatcher.handleResume(ms) : null),
+      setBounds: (bounds) => (widget ? widget.setBounds(bounds) : null),
+      setDisplays: (displays) => (widget ? widget.setTestDisplays(displays) : null),
+      setCursor: (point) => (widget ? widget.setTestCursor(point) : null),
     });
   });
   app.on('before-quit', () => {
+    if (widget) widget.dispose();
     if (powerWatcher) powerWatcher.dispose();
     if (shortcuts) shortcuts.dispose();
     if (timerService) timerService.dispose();
     if (store) store.flush();
   });
   app.on('will-quit', () => {
+    if (widget) widget.dispose();
     if (powerWatcher) powerWatcher.dispose();
     if (shortcuts) shortcuts.dispose();
     if (timerService) timerService.dispose();
@@ -557,6 +536,7 @@ else {
     globalShortcut.unregisterAll();
   });
   app.on('window-all-closed', () => {
+    if (widget) widget.dispose();
     if (powerWatcher) powerWatcher.dispose();
     if (timerService) timerService.dispose();
     if (store) store.flush();

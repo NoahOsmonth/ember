@@ -103,12 +103,54 @@ describe('field table', () => {
     expect(issues.map((entry) => entry.path)).toEqual(['sound', 'mini']);
   });
 
-  it('accepts finite coordinates and null, rejects anything else', () => {
-    expect(normalize({ x: 12, y: null }).value).toMatchObject({ x: 12, y: null });
-    expect(normalize({ x: null, y: -40 }).value).toMatchObject({ x: null, y: -40 });
-    const bad = normalize({ x: 'left', y: Infinity });
-    expect(bad.value).toMatchObject({ x: null, y: null });
-    expect(bad.issues.map((entry) => entry.path)).toEqual(['x', 'y']);
+  it('accepts a full placement record and fills omitted fields', () => {
+    const { value, issues } = normalize({
+      placement: { x: 12, y: -40, width: 340, height: 96, displayId: 7, scaleFactor: 1.5 },
+    });
+    expect(issues).toEqual([]);
+    expect(value.placement).toEqual({
+      x: 12,
+      y: -40,
+      width: 340,
+      height: 96,
+      displayId: 7,
+      scaleFactor: 1.5,
+    });
+    expect(normalize({ placement: { x: 1, y: 2 } }).value.placement).toEqual({
+      x: 1,
+      y: 2,
+      width: 0,
+      height: 0,
+      displayId: null,
+      scaleFactor: 1,
+    });
+  });
+
+  it('accepts a null placement and rejects a malformed one', () => {
+    expect(normalize({ placement: null }).value.placement).toBeNull();
+    const bad = normalize({ placement: { x: 'left' } });
+    expect(bad.value.placement).toBeNull();
+    expect(bad.issues).toEqual([
+      expect.objectContaining({ path: 'placement', code: 'invalid-type' }),
+    ]);
+  });
+
+  it('converts the old root coordinates into a placement once', () => {
+    const { value, issues } = normalize({ x: 12, y: 40, width: 340, height: 96 });
+    expect(issues).toEqual([]);
+    expect(value.placement).toMatchObject({ x: 12, y: 40, width: 340, height: 96 });
+    expect(value).not.toHaveProperty('x');
+    expect(value).not.toHaveProperty('y');
+  });
+
+  it('converts a nested legacy window position and prefers placement', () => {
+    const legacy = normalize({ window: { x: 5, y: 6 } });
+    expect(legacy.value.placement).toMatchObject({ x: 5, y: 6 });
+    const both = normalize({
+      window: { x: 5, y: 6 },
+      placement: { x: 7, y: 8 },
+    });
+    expect(both.value.placement).toMatchObject({ x: 7, y: 8 });
   });
 
   it('reports unknown keys and drops them from the result', () => {

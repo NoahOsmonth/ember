@@ -47,8 +47,7 @@ export const defaults = Object.freeze({
     toggle: 'Control+Alt+Space',
     lock: 'Control+Alt+L',
   }),
-  x: null,
-  y: null,
+  placement: null,
   tutorialSeen: false,
   timer: null,
 });
@@ -63,7 +62,8 @@ const BOOLEAN_PATHS = [
   'tutorialSeen',
 ];
 const NUMBER_PATHS = ['rounds', 'volume', 'opacity'];
-const POSITION_PATHS = ['x', 'y'];
+/** Pre-placement keys that normalize still accepts and converts. */
+const LEGACY_KEYS = Object.freeze(['x', 'y', 'width', 'height', 'window']);
 
 /**
  * Ordered migrations. Each entry upgrades a document from `from` to `to`.
@@ -122,6 +122,36 @@ function coerceNumber(raw, limits) {
   if (value < limits.min) return { ok: true, value: limits.min, clamped: true };
   if (value > limits.max) return { ok: true, value: limits.max, clamped: true };
   return { ok: true, value };
+}
+
+/**
+ * Turn a placement candidate into the canonical shape.
+ *
+ * The old document stored `{ x, y }` at the root; some prototype builds nested
+ * it under `window`. Both are accepted, and the result always carries the full
+ * `{ x, y, width, height, displayId, scaleFactor }` record.
+ *
+ * @param {unknown} raw
+ * @returns {{ x: number, y: number, width: number, height: number, displayId: number | null, scaleFactor: number } | null}
+ */
+function normalizePlacement(raw) {
+  if (!isPlainObject(raw)) return null;
+  if (!Number.isFinite(raw.x) || !Number.isFinite(raw.y)) return null;
+  return {
+    x: raw.x,
+    y: raw.y,
+    width:
+      typeof raw.width === 'number' && Number.isFinite(raw.width) && raw.width >= 0 ? raw.width : 0,
+    height:
+      typeof raw.height === 'number' && Number.isFinite(raw.height) && raw.height >= 0
+        ? raw.height
+        : 0,
+    displayId: Number.isInteger(raw.displayId) ? raw.displayId : null,
+    scaleFactor:
+      typeof raw.scaleFactor === 'number' && Number.isFinite(raw.scaleFactor) && raw.scaleFactor > 0
+        ? raw.scaleFactor
+        : 1,
+  };
 }
 
 /**
@@ -194,13 +224,26 @@ export function normalize(raw) {
     else issues.push(issue('theme', 'invalid-type', 'expected one of ' + THEMES.join(', ')));
   }
 
-  for (const path of POSITION_PATHS) {
-    const rawValue = doc[path];
-    if (rawValue === undefined) continue;
-    if (rawValue === null || (typeof rawValue === 'number' && Number.isFinite(rawValue))) {
-      value[path] = rawValue;
+  if (doc.placement !== undefined) {
+    if (doc.placement === null) {
+      value.placement = null;
     } else {
-      issues.push(issue(path, 'invalid-type', 'expected a finite number or null'));
+      const placement = normalizePlacement(doc.placement);
+      if (placement) value.placement = placement;
+      else {
+        issues.push(issue('placement', 'invalid-type', 'expected a placement object or null'));
+      }
+    }
+  } else {
+    // Convert the pre-placement shape once. After this write the document has
+    // only `placement`, so a second normalize is a no-op.
+    const candidates = isPlainObject(doc.window) ? [doc.window, doc] : [doc];
+    for (const candidate of candidates) {
+      const placement = normalizePlacement(candidate);
+      if (placement) {
+        value.placement = placement;
+        break;
+      }
     }
   }
 
@@ -251,7 +294,9 @@ export function normalize(raw) {
   }
 
   for (const key of Object.keys(doc)) {
-    if (!(key in defaults)) issues.push(issue(key, 'unknown-key', 'key is not part of the schema'));
+    if (!(key in defaults) && !LEGACY_KEYS.includes(key)) {
+      issues.push(issue(key, 'unknown-key', 'key is not part of the schema'));
+    }
   }
 
   return { value, issues };

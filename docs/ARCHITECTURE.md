@@ -19,6 +19,7 @@ src/
   main/security.js              hardened webPreferences, navigation guards, openExternal allowlist
   main/power.js                 suspend/resume, clock-jump policy, display and unlock reassertion
   main/shortcuts.js             global shortcut ownership: per-binding status, rebind, reset
+  main/windows/widget-window.js widget creation, bounds, main-process drag, placement persistence
   preload/index.js              explicit contextBridge surface exposed as window.ember
   renderer/
     widget/index.html           the always-on-top timer strip (markup + CSP only)
@@ -34,6 +35,7 @@ src/
     package.json                declares "type": "module" for this subtree only
     schema.js                   versioned settings document: defaults, limits, migrations, normalize()
     validate.js                 IPC payload shapes: string, number, boolean, enum, object, array, optional
+    placement.js                pure work-area clamp, right dock, display pick, scale fit
     timer.js                    pure phase/status state machine driven by an injected clock
     ruler.js                    unitFor() and computeRuler(): bars and fill fractions from ms
     themes.js                   THEMES, themeNames(), resolveTheme(), barColor()
@@ -53,8 +55,9 @@ test/visual/                    fixture gallery and committed visual baselines
 
 1. `src/main/index.js` starts, brings up the settings store
    (`src/main/store.js`, schema from `src/core/schema.js`), constructs the
-   timer service (`src/main/timer-service.js`), restores the saved timer, creates
-   the widget window and registers global shortcuts.
+   timer service (`src/main/timer-service.js`), restores the saved timer,
+   creates the widget through `src/main/windows/widget-window.js`, and
+   registers global shortcuts.
 2. `src/preload/index.js` runs with `contextIsolation: true` and exposes one
    named method per channel on `window.ember`, grouped by domain
    (`ember.state.get()`, `ember.win.mini()`, `ember.timer.start()`, …).
@@ -63,9 +66,10 @@ test/visual/                    fixture gallery and committed visual baselines
 3. The widget renderer subscribes to `timer:snapshot` and renders the last
    snapshot it received. It never computes authoritative remaining time from
    its own clock. Every user action is forwarded to the main process as an IPC
-   message (`timer:*`, `state:set`, `win:mini`, `win:lock`, `win:move`,
-   `settings:open`, `menu:show`, `app:quit`). Invokes resolve to
-   `{ ok: true, value }` or `{ ok: false, code }`; sends return nothing.
+   message (`timer:*`, `state:set`, `win:mini`, `win:lock`, `win:dragStart`,
+   `win:dragEnd`, `win:move`, `settings:open`, `menu:show`, `app:quit`).
+   Invokes resolve to `{ ok: true, value }` or `{ ok: false, code }`; sends
+   return nothing.
 4. The main process is the single writer of persisted state. It merges the
    patch, hands the result to the store, and the store validates it against the
    schema before scheduling one coalesced write (250 ms) of
@@ -118,6 +122,29 @@ jump: backwards re-anchors the end instant to preserve the remaining time,
 forwards counts as elapsed (ADR 0006). Unlock and display changes re-apply the
 always-on-top level and re-clamp the widget into a work area.
 
+## Window placement
+
+`src/main/windows/widget-window.js` owns the widget's geometry; the renderer
+never computes a position. On `win:dragStart` the main process records the
+offset between the cursor and the window corner once, then polls
+`screen.getCursorScreenPoint()` every 16 ms and calls `setPosition` while
+`win:dragEnd` has not arrived. Cursor and window bounds are both in DIPs, so a
+150 % display needs no conversion, the drag keeps tracking outside the window,
+and the offset cannot accumulate error. Unchanged positions are skipped.
+
+`src/core/placement.js` holds the arithmetic: `clampToWorkArea`,
+`dockRight`, `pickDisplay` and `nextScaleFactor`, all pure and property-tested.
+Every move is clamped to the work area of the display it overlaps. The saved
+`placement` record is `{ x, y, width, height, displayId, scaleFactor }`, written
+after a drag (debounced 200 ms) and on quit. On restore the display is matched
+by id; if it is gone, the widget starts centred on the primary display rather
+than at a stale absolute coordinate. `display-added`, `display-removed`,
+`display-metrics-changed` and resume all re-clamp. Toggling compact mode keeps
+the right edge fixed, and `win:dock` moves the widget to the right edge.
+
+The schema accepts the pre-placement root `{ x, y }` (and a nested `window`
+object) and converts it to `placement` once; the old keys are not written again.
+
 ## Renderer security and scheduling
 
 Every window is created through `src/main/security.js`, which states all four
@@ -154,6 +181,10 @@ handler runs and returns an envelope instead of throwing.
 | `state:get`       | invoke | none                            | the public state       |
 | `state:set`       | invoke | partial settings object, strict | the merged state       |
 | `state:reset`     | invoke | none                            | the default state      |
+| `win:dragStart`   | send   | `{ x, y }` numbers              | none                   |
+| `win:dragEnd`     | send   | none                            | none                   |
+| `win:dock`        | invoke | none                            | the clamped bounds     |
+| `win:setScale`    | invoke | `{ scaleFactor }` number        | `{ scaleFactor }`      |
 | `win:move`        | send   | `{ dx, dy }` numbers            | none                   |
 | `win:mini`        | invoke | `{ mini }` boolean              | none                   |
 | `win:lock`        | invoke | `{ locked }` boolean            | none                   |
@@ -203,9 +234,10 @@ last one, so a drifted surface resolves instead of rejecting.
 - **A channel must not assume its sender.** If a channel needs a window, it
   takes an explicit window identifier in its payload (for example
   `{ windowId, tab }`), so the same call has the same meaning from either
-  renderer. The two window-scoped exceptions are `win:move` and `win:close`:
-  their meaning is "act on the window that sent this", and they use
-  `BrowserWindow.fromWebContents(event.sender)` deliberately.
+  renderer. The window-scoped exceptions are `win:move`, `win:close`,
+  `win:dragStart` and `win:dragEnd`: their meaning is "act on the window that
+  sent this", and they use `BrowserWindow.fromWebContents(event.sender)`
+  deliberately. `win:dock` is widget-scoped by definition.
 - **No behaviour changes ride along with refactors.** Layout moves and tooling
   changes are separate commits that keep the app starting at every step.
 - **Every automated test gets its own profile.** When `EMBER_TEST=1` the app

@@ -18,6 +18,8 @@ test('test mode registers exactly the channels the app owns', async ({ ember }) 
     'test:advanceClock',
     'test:setBounds',
     'test:setClock',
+    'test:setCursor',
+    'test:setDisplays',
     'test:suspend',
   ]);
 });

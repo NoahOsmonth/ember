@@ -87,6 +87,38 @@ describe('createHandlers', () => {
     });
   });
 
+  it('routes bounds through the injected placement setter', () => {
+    const setBounds = vi.fn(() => ({ x: 0, y: 0, width: 340, height: 96 }));
+    const handlers = createHandlers({ clock: fakeClock(), getWindow: () => null, setBounds });
+    expect(handlers['test:setBounds'](null, { x: 40, y: 50 })).toEqual({
+      ok: true,
+      value: { x: 0, y: 0, width: 340, height: 96 },
+    });
+    expect(setBounds).toHaveBeenCalledWith({ x: 40, y: 50 });
+  });
+
+  it('exposes cursor and display fixtures only when injected', () => {
+    const setCursor = vi.fn((point) => point);
+    const setDisplays = vi.fn(() => [{ id: 1 }]);
+    const handlers = createHandlers({
+      clock: fakeClock(),
+      getWindow: () => null,
+      setCursor,
+      setDisplays,
+    });
+    expect(handlers['test:setCursor'](null, { x: 3, y: 4 })).toEqual({
+      ok: true,
+      value: { x: 3, y: 4 },
+    });
+    expect(handlers['test:setDisplays'](null, [{ id: 1 }])).toEqual({
+      ok: true,
+      value: [{ id: 1 }],
+    });
+    const bare = createHandlers({ clock: fakeClock(), getWindow: () => null });
+    expect(() => bare['test:setCursor'](null, { x: 0, y: 0 })).toThrow(/unavailable/);
+    expect(() => bare['test:setDisplays'](null, [])).toThrow(/unavailable/);
+  });
+
   it('advances the clock and then drives the resume handler', () => {
     const clock = fakeClock();
     const suspend = vi.fn(() => ({ phase: 'short' }));

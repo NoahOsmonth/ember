@@ -15,6 +15,8 @@ const TEST_CHANNEL_NAMES = Object.freeze([
   'test:setClock',
   'test:advanceClock',
   'test:setBounds',
+  'test:setCursor',
+  'test:setDisplays',
   'test:suspend',
 ]);
 
@@ -37,10 +39,20 @@ function isEnabled(env = process.env) {
  * @param {{
  *   clock: { setNow: Function, advance: Function, now: Function },
  *   getWindow: () => any,
- *   suspend?: (ms: number) => any
+ *   suspend?: (ms: number) => any,
+ *   setBounds?: (bounds: any) => any,
+ *   setDisplays?: (displays: any) => any,
+ *   setCursor?: (point: any) => any
  * }} deps
  */
-function createHandlers({ clock, getWindow, suspend = () => null }) {
+function createHandlers({
+  clock,
+  getWindow,
+  suspend = () => null,
+  setBounds = null,
+  setDisplays = null,
+  setCursor = null,
+}) {
   return {
     'test:setClock': (_event, iso) => {
       const target = Date.parse(String(iso));
@@ -59,6 +71,7 @@ function createHandlers({ clock, getWindow, suspend = () => null }) {
       return { ok: true, value: new Date(clock.now()).toISOString() };
     },
     'test:setBounds': (_event, bounds) => {
+      if (setBounds) return { ok: true, value: setBounds(bounds) };
       const win = getWindow();
       if (!win || win.isDestroyed()) throw new Error('test:setBounds has no widget window');
       const current = win.getBounds();
@@ -72,6 +85,14 @@ function createHandlers({ clock, getWindow, suspend = () => null }) {
       };
       win.setBounds(next);
       return { ok: true, value: win.getBounds() };
+    },
+    'test:setCursor': (_event, point) => {
+      if (!setCursor) throw new Error('test:setCursor is unavailable');
+      return { ok: true, value: setCursor(point) };
+    },
+    'test:setDisplays': (_event, displays) => {
+      if (!setDisplays) throw new Error('test:setDisplays is unavailable');
+      return { ok: true, value: setDisplays(displays) };
     },
     'test:suspend': (_event, ms) => {
       const delta = Number(ms);
@@ -96,13 +117,26 @@ function registerTestChannel(ipcMain, name, handler) {
 /**
  * @param {{
  *   ipcMain: any, clock: any, getWindow: () => any,
- *   suspend?: (ms: number) => any, env?: NodeJS.ProcessEnv
+ *   suspend?: (ms: number) => any,
+ *   setBounds?: (bounds: any) => any,
+ *   setDisplays?: (displays: any) => any,
+ *   setCursor?: (point: any) => any,
+ *   env?: NodeJS.ProcessEnv
  * }} options
  * @returns {string[]} the channels registered, empty when test mode is off
  */
-function registerTestChannels({ ipcMain, clock, getWindow, suspend, env = process.env }) {
+function registerTestChannels({
+  ipcMain,
+  clock,
+  getWindow,
+  suspend,
+  setBounds,
+  setDisplays,
+  setCursor,
+  env = process.env,
+}) {
   if (!isEnabled(env)) return [];
-  const handlers = createHandlers({ clock, getWindow, suspend });
+  const handlers = createHandlers({ clock, getWindow, suspend, setBounds, setDisplays, setCursor });
   for (const name of TEST_CHANNEL_NAMES) {
     registerTestChannel(ipcMain, name, handlers[name]);
   }

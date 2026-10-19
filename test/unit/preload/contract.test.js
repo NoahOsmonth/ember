@@ -111,6 +111,8 @@ describe('preload and registry agree in both directions', () => {
       'advanceClock',
       'setBounds',
       'setClock',
+      'setCursor',
+      'setDisplays',
       'suspend',
     ]);
   });
@@ -128,6 +130,26 @@ describe('preload forwards to the right channel', () => {
       call: () => api.state.reset(),
       method: 'invoke',
       args: ['state:reset', undefined],
+    },
+    'win:dragStart': {
+      call: () => api.win.dragStart({ x: 120, y: 240 }),
+      method: 'send',
+      args: ['win:dragStart', { x: 120, y: 240 }],
+    },
+    'win:dragEnd': {
+      call: () => api.win.dragEnd(),
+      method: 'send',
+      args: ['win:dragEnd', undefined],
+    },
+    'win:dock': {
+      call: () => api.win.dock(),
+      method: 'invoke',
+      args: ['win:dock', undefined],
+    },
+    'win:setScale': {
+      call: () => api.win.setScale(1.25),
+      method: 'invoke',
+      args: ['win:setScale', { scaleFactor: 1.25 }],
     },
     'win:move': {
       call: () => api.win.move({ dx: 3, dy: 4 }),

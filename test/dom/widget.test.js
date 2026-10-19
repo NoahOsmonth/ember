@@ -309,6 +309,8 @@ describe('widget command handling', () => {
       win: {
         mini: record('win.mini', ok()),
         move: (...args) => calls.push({ name: 'win.move', args }),
+        dragStart: (...args) => calls.push({ name: 'win.dragStart', args }),
+        dragEnd: (...args) => calls.push({ name: 'win.dragEnd', args }),
       },
       menu: { show: () => calls.push({ name: 'menu.show', args: [] }) },
       onSettings: () => () => {},
@@ -400,38 +402,54 @@ describe('widget command handling', () => {
     widget.destroy();
   });
 
-  it('drags the window from the glass but not from a control', async () => {
+  it('drags from the glass and ends the drag on pointerup, cancel or blur', async () => {
     const Pointer = globalThis.PointerEvent || MouseEvent;
     const api = fakeApi();
     const widget = createWidget({ root, now: () => 0, autoStart: false, api });
     widget.mount();
     await flush();
     api.calls.length = 0;
+    const names = () => api.calls.map((call) => call.name);
+    const endCount = () => names().filter((name) => name === 'win.dragEnd').length;
 
     root
       .querySelector('.play')
       .dispatchEvent(
         new Pointer('pointerdown', { button: 0, screenX: 0, screenY: 0, bubbles: true })
       );
-    window.dispatchEvent(new Pointer('pointermove', { screenX: 40, screenY: 20 }));
-    expect(api.calls.some((call) => call.name === 'win.move')).toBe(false);
+    expect(names()).not.toContain('win.dragStart');
 
     root
       .querySelector('.digits')
       .dispatchEvent(
         new Pointer('pointerdown', { button: 0, screenX: 0, screenY: 0, bubbles: true })
       );
-    window.dispatchEvent(new Pointer('pointermove', { screenX: 40, screenY: 20 }));
-    expect(api.calls.some((call) => call.name === 'win.move')).toBe(false);
+    expect(names()).not.toContain('win.dragStart');
 
-    root
-      .querySelector('.note')
-      .dispatchEvent(
-        new Pointer('pointerdown', { button: 0, screenX: 10, screenY: 10, bubbles: true })
-      );
-    window.dispatchEvent(new Pointer('pointermove', { screenX: 40, screenY: 30 }));
-    window.dispatchEvent(new Pointer('pointerup', { screenX: 40, screenY: 30 }));
-    expect(api.calls.find((call) => call.name === 'win.move').args).toEqual([{ dx: 30, dy: 20 }]);
+    const note = root.querySelector('.note');
+    note.dispatchEvent(
+      new Pointer('pointerdown', { button: 0, screenX: 10, screenY: 10, bubbles: true })
+    );
+    expect(api.calls.find((call) => call.name === 'win.dragStart').args).toEqual([
+      { x: 10, y: 10 },
+    ]);
+
+    window.dispatchEvent(new Pointer('pointerup', {}));
+    expect(endCount()).toBe(1);
+
+    note.dispatchEvent(
+      new Pointer('pointerdown', { button: 0, screenX: 5, screenY: 5, bubbles: true })
+    );
+    window.dispatchEvent(new Pointer('pointercancel', {}));
+    expect(endCount()).toBe(2);
+
+    note.dispatchEvent(
+      new Pointer('pointerdown', { button: 0, screenX: 5, screenY: 5, bubbles: true })
+    );
+    window.dispatchEvent(new Event('blur'));
+    expect(endCount()).toBe(3);
+
+    expect(names()).not.toContain('win.move');
     widget.destroy();
   });
 

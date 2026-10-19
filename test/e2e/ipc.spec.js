@@ -37,29 +37,30 @@ test('state:set rejects an unknown key instead of ignoring it', async ({ ember }
   expect(result.issues[0]).toMatchObject({ path: 'notASetting', code: 'unknown-key' });
 });
 
-test('the widget still drags through the send channel', async ({ ember }) => {
+test('the widget follows the cursor through the main-process drag', async ({ ember }) => {
   await ember.page.evaluate(() =>
     /** @type {any} */ (window).ember.test.setBounds({ x: 120, y: 120 })
   );
   const before = await widgetBounds(ember.app);
 
-  await ember.page.mouse.move(30, 80);
-  await ember.page.mouse.down();
-  await ember.page.mouse.move(70, 110, { steps: 6 });
-  await ember.page.mouse.up();
+  await ember.page.evaluate(() =>
+    /** @type {any} */ (window).ember.test.setCursor({ x: 150, y: 150 })
+  );
+  await ember.page.evaluate(() =>
+    /** @type {any} */ (window).ember.win.dragStart({ x: 150, y: 150 })
+  );
+  await ember.page.evaluate(() =>
+    /** @type {any} */ (window).ember.test.setCursor({ x: 190, y: 180 })
+  );
 
   await expect
     .poll(async () => {
       const after = await widgetBounds(ember.app);
-      return after.x - before.x;
+      return { dx: after.x - before.x, dy: after.y - before.y };
     })
-    .toBeGreaterThanOrEqual(20);
-  await expect
-    .poll(async () => {
-      const after = await widgetBounds(ember.app);
-      return after.y - before.y;
-    })
-    .toBeGreaterThanOrEqual(10);
+    .toEqual({ dx: 40, dy: 30 });
+
+  await ember.page.evaluate(() => /** @type {any} */ (window).ember.win.dragEnd());
 });
 
 test('the settings window opens and saves a switch through state:set', async ({ ember }) => {

@@ -30,8 +30,6 @@ function channelSpecs(v) {
     mini: v.optional(v.boolean()),
     onTop: v.optional(v.boolean()),
     launch: v.optional(v.boolean()),
-    x: v.optional(v.number({ integer: true })),
-    y: v.optional(v.number({ integer: true })),
     tutorialSeen: v.optional(v.boolean()),
   });
 
@@ -39,6 +37,20 @@ function channelSpecs(v) {
     { name: 'state:get', kind: 'invoke', schema: none },
     { name: 'state:set', kind: 'invoke', schema: settingsPatch },
     { name: 'state:reset', kind: 'invoke', schema: none },
+    {
+      name: 'win:dragStart',
+      kind: 'send',
+      schema: v.object({ x: v.number(), y: v.number() }),
+    },
+    { name: 'win:dragEnd', kind: 'send', schema: none },
+    { name: 'win:dock', kind: 'invoke', schema: none },
+    {
+      name: 'win:setScale',
+      kind: 'invoke',
+      schema: v.object({ scaleFactor: v.number({ min: 0.5, max: 3 }) }),
+    },
+    // The settings window still drags by delta; the widget uses the
+    // cursor-following channels above.
     { name: 'win:move', kind: 'send', schema: v.object({ dx: v.number(), dy: v.number() }) },
     { name: 'win:mini', kind: 'invoke', schema: v.object({ mini: v.boolean() }) },
     { name: 'win:lock', kind: 'invoke', schema: v.object({ locked: v.boolean() }) },

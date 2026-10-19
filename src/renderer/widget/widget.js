@@ -339,10 +339,14 @@ export function createWidget({
       })
     );
 
-    // Drag from anywhere that is not a control (own drag, so right-click and
-    // wheel keep working). `win:move` is a send channel, so a drag never waits
-    // on a round trip.
-    let drag = null;
+    // Drag from anywhere that is not a control. The main process follows the
+    // cursor itself; this side only says where the drag began and when it ended.
+    let dragging = false;
+    const endDrag = () => {
+      if (!dragging) return;
+      dragging = false;
+      api.win.dragEnd();
+    };
     cleanups.push(
       on(view, 'pointerdown', (event) => {
         if (
@@ -352,23 +356,14 @@ export function createWidget({
         ) {
           return;
         }
-        drag = { sx: event.screenX, sy: event.screenY };
+        dragging = true;
         doc.body.setPointerCapture?.(event.pointerId);
+        api.win.dragStart({ x: event.screenX, y: event.screenY });
       })
     );
-    cleanups.push(
-      on(view, 'pointermove', (event) => {
-        if (!drag) return;
-        const dx = event.screenX - drag.sx;
-        const dy = event.screenY - drag.sy;
-        if (dx || dy) {
-          api.win.move({ dx, dy });
-          drag.sx = event.screenX;
-          drag.sy = event.screenY;
-        }
-      })
-    );
-    cleanups.push(on(view, 'pointerup', () => (drag = null)));
+    cleanups.push(on(view, 'pointerup', endDrag));
+    cleanups.push(on(view, 'pointercancel', endDrag));
+    cleanups.push(on(view, 'blur', endDrag));
     cleanups.push(
       on(view, 'dblclick', (event) => {
         if (!event.target.closest('button, .digits')) call(api.win.mini, !cfg.mini);
