@@ -1,0 +1,90 @@
+:root { --a: .62; --accent: #fff; color-scheme: dark; }
+* { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-user-select: none; }
+html, body { height: 100%; background: transparent; overflow: hidden; }
+body {
+  font-family: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  color: #fff;
+  cursor: default;
+}
+
+/* the glass */
+#app {
+  position: absolute; inset: 0;
+  display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: 22px; align-items: center;
+  padding: 0 22px 0 24px;
+  border-radius: 24px;
+  background: rgba(8, 9, 13, var(--a));
+  border: 1px solid rgba(255, 255, 255, .09);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .08), inset 0 -18px 30px -24px rgba(0, 0, 0, .5);
+  transition: opacity .35s ease;
+}
+body.locked #app { opacity: .5; }
+
+/* time */
+.time { display: grid; gap: 7px; }
+.digits {
+  font-family: "Bahnschrift", "Segoe UI Variable Display", "Segoe UI", sans-serif;
+  font-variation-settings: "wght" 300, "wdth" 75;
+  font-size: 56px; line-height: .86; letter-spacing: -.012em;
+  font-variant-numeric: tabular-nums;
+  color: var(--accent);
+  text-shadow: 0 0 22px color-mix(in oklch, var(--accent) 38%, transparent), 0 1px 10px rgba(0, 0, 0, .45);
+  transition: color 1.2s ease, opacity .3s ease;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.digits .c { display: inline-block; transform: translateY(-.04em); }
+.running .digits .c { animation: colon 2s steps(1) infinite; }
+@keyframes colon { 0% { opacity: 1 } 50% { opacity: .25 } }
+.ready .digits, .paused .digits { color: rgba(255, 255, 255, .9); }
+.paused .digits { opacity: .62; }
+
+.meta { display: flex; align-items: center; gap: 12px; height: 12px; }
+.state { font-size: 12px; letter-spacing: .01em; color: rgba(255, 255, 255, .56); text-shadow: 0 1px 6px rgba(0,0,0,.5); white-space: nowrap; }
+.pips { display: flex; gap: 5px; }
+.pip { width: 7px; height: 7px; border-radius: 50%; box-shadow: inset 0 0 0 1.25px rgba(255, 255, 255, .28); transition: background .5s, box-shadow .5s; }
+.pip.done { background: rgba(255, 255, 255, .85); box-shadow: none; }
+.pip.now { box-shadow: inset 0 0 0 1.25px var(--accent); }
+
+/* the ruler: one bar per minute, a taller mark every five */
+.strip { display: grid; gap: 9px; min-width: 0; }
+.bars { display: flex; align-items: flex-end; gap: var(--gap, 3px); height: 46px; cursor: ns-resize; }
+.bar {
+  position: relative; flex: 1; min-width: 0; height: 58%;
+  border-radius: 2px; background: rgba(255, 255, 255, .11);
+}
+.bar.tick { height: 100%; }
+.bar::after {
+  content: ""; position: absolute; inset: 0; border-radius: inherit;
+  background: var(--c);
+  clip-path: inset(calc((1 - var(--f, 1)) * 100%) 0 0 0);
+}
+.paused .bars { animation: breathe 3s ease-in-out infinite; }
+@keyframes breathe { 50% { opacity: .55; } }
+
+.foot { position: relative; display: flex; align-items: center; height: 18px; }
+.note { font-size: 11.5px; color: rgba(255, 255, 255, .5); text-shadow: 0 1px 6px rgba(0,0,0,.5); white-space: nowrap; font-variant-numeric: tabular-nums; transition: opacity .18s; }
+.ctl { position: absolute; right: -4px; top: 0; bottom: 0; display: flex; align-items: center; gap: 1px; opacity: 0; transform: translateX(6px); transition: opacity .18s, transform .18s; pointer-events: none; }
+#app:hover .ctl, .hov .ctl { opacity: 1; transform: none; pointer-events: auto; }
+#app:hover .note, .hov .note { opacity: 0; }
+.ctl button {
+  width: 24px; height: 18px; display: grid; place-items: center;
+  border: 0; border-radius: 6px; background: transparent; color: rgba(255, 255, 255, .62); cursor: pointer;
+}
+.ctl button:hover, .ctl button.lit { background: rgba(255, 255, 255, .14); color: #fff; }
+.ctl button:focus-visible { outline: 1.5px solid var(--accent); outline-offset: 1px; }
+.ctl svg { width: 12px; height: 12px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.ctl .play-i, .ctl .pause-i { fill: currentColor; stroke: none; }
+.ctl .pause-i, .running .ctl .play-i { display: none; }
+.running .ctl .pause-i { display: block; }
+
+/* compact: digits and a fuse line */
+.mini #app { grid-template-columns: 1fr; padding: 0; justify-items: center; }
+.mini .digits { font-size: 36px; }
+.mini .meta, .mini .strip { display: none; }
+.fuse { display: none; position: absolute; left: 22px; right: 22px; bottom: 9px; height: 2px; border-radius: 2px; background: rgba(255,255,255,.12); overflow: hidden; }
+.fuse i { display: block; height: 100%; width: calc(var(--p, 1) * 100%); background: var(--accent); transition: background 1.2s; }
+.mini .fuse { display: block; }
+.mini .time { gap: 0; margin-top: -6px; }
+
+@media (prefers-reduced-motion: reduce) { .running .digits .c, .paused .bars { animation: none !important; } }

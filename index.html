@@ -1,0 +1,225 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>Ember</title>
+<link rel="stylesheet" href="widget.css">
+</head>
+<body class="ready">
+  <div id="app">
+    <div class="time">
+      <div class="digits" id="digits" role="timer" aria-label="Time remaining">25<span class="c">:</span>00</div>
+      <div class="meta"><span class="state" id="state">ready</span><span class="pips" id="pips"></span></div>
+    </div>
+    <div class="strip">
+      <div class="bars" id="bars"></div>
+      <div class="foot">
+        <span class="note" id="note"></span>
+        <div class="ctl">
+          <button class="play" id="bPlay" title="Start / pause (Space)" aria-label="Start or pause">
+            <svg class="play-i" viewBox="0 0 12 12"><path d="M3 1.8v8.4L10 6z"/></svg>
+            <svg class="pause-i" viewBox="0 0 12 12"><rect x="2.5" y="2" width="2.6" height="8" rx=".8"/><rect x="6.9" y="2" width="2.6" height="8" rx=".8"/></svg>
+          </button>
+          <button id="bSkip" title="Skip to next (S)" aria-label="Skip"><svg viewBox="0 0 12 12"><path d="M2.5 2.5 7 6l-4.5 3.5z"/><path d="M9.5 2.5v7"/></svg></button>
+          <button id="bReset" title="Reset (R)" aria-label="Reset"><svg viewBox="0 0 12 12"><path d="M2.2 6a3.8 3.8 0 1 0 1.2-2.8"/><path d="M2.2 1.6v2.2h2.2"/></svg></button>
+          <button id="bSettings" title="Settings" aria-label="Settings"><svg viewBox="0 0 12 12"><path d="M1.5 3.5h9M1.5 8.5h9"/><circle cx="4" cy="3.5" r="1.3" fill="var(--bg, #0b0c10)"/><circle cx="8" cy="8.5" r="1.3" fill="var(--bg, #0b0c10)"/></svg></button>
+        </div>
+      </div>
+    </div>
+    <div class="fuse"><i id="fuse"></i></div>
+  </div>
+
+<script src="common.js"></script>
+<script>
+(() => {
+  const C = window.EmberCommon;
+  // Falls back to a stub so index.html also previews in a plain browser.
+  const api = window.ember || {
+    getState: async () => ({ ...C.DEFAULTS }),
+    setState() {}, moveTo() {}, setMini() {}, showMenu() {}, openSettings() {}, onSettings() {}, onCommand() {},
+  };
+
+  const LABEL = { focus: 'focus', short: 'short break', long: 'long break' };
+  const $ = id => document.getElementById(id);
+  const el = { digits: $('digits'), state: $('state'), pips: $('pips'), bars: $('bars'), note: $('note'), fuse: $('fuse') };
+
+  let cfg = { ...C.DEFAULTS, locked: false };
+  const S = { phase: 'focus', running: false, rem: 0, endsAt: 0, done: 0 };
+  let bars = [], unit = 1, lastIdx = -2, lastText = '', flashUntil = 0, flashMsg = '';
+
+  const mins = () => cfg.durations[S.phase];
+  const total = () => mins() * 60000;
+  const remaining = () => Math.max(0, S.running ? S.endsAt - Date.now() : S.rem);
+
+  function build() {
+    const min = mins();
+    unit = C.unitFor(min);
+    const n = Math.ceil(min / unit);
+    el.bars.style.setProperty('--gap', n > 20 ? '3px' : '5px');
+    el.bars.innerHTML = '';
+    bars = [];
+    for (let i = 0; i < n; i++) {
+      const b = document.createElement('i');
+      b.className = 'bar' + ((i + 1) % 5 === 0 || i === n - 1 ? ' tick' : '');
+      b.style.setProperty('--c', C.barColor(cfg.theme, S.phase, i, n));
+      el.bars.appendChild(b);
+      bars.push(b);
+    }
+    lastIdx = -2;
+  }
+
+  function setPhase(p) {
+    S.phase = p; S.running = false; S.rem = total();
+    build(); render();
+  }
+
+  const mode = () => (S.running ? 'running' : S.rem < total() ? 'paused' : 'ready');
+
+  function start() { S.endsAt = Date.now() + S.rem; S.running = true; render(); }
+  function pause() { S.rem = remaining(); S.running = false; render(); }
+  const toggle = () => (S.running ? pause() : start());
+
+  function advance(natural) {
+    const was = S.phase;
+    let next;
+    if (was === 'focus') { if (natural) S.done++; next = S.done >= cfg.rounds ? 'long' : 'short'; }
+    else { if (was === 'long') S.done = 0; next = 'focus'; }
+    setPhase(next);
+    if (natural) {
+      if (cfg.sound) C.chime(was, cfg.volume);
+      notify(was);
+      if (next === 'focus' ? cfg.autoFocus : cfg.autoBreak) start();
+    }
+  }
+
+  const resetPhase = () => setPhase(S.phase);
+
+  function notify(was) {
+    if (!cfg.notify) return;
+    try {
+      new Notification(was === 'focus' ? 'Focus round done' : 'Break over', {
+        body: was === 'focus' ? 'Time for a break.' : 'Ready for the next focus round.',
+        silent: true,
+      });
+    } catch {}
+  }
+
+  function flash(msg, ms = 1400) { flashUntil = Date.now() + ms; flashMsg = msg; render(); }
+
+  function render() {
+    const rem = remaining();
+    if (S.running && rem <= 0) { advance(true); return; }
+
+    const m = mode();
+    document.body.className = (cfg.mini ? 'mini ' : '') + m + (cfg.locked ? ' locked' : '');
+
+    const secs = Math.ceil(rem / 1000);
+    const text = String(Math.floor(secs / 60)).padStart(2, '0') + ':' + String(secs % 60).padStart(2, '0');
+    if (text !== lastText) {
+      el.digits.innerHTML = text.replace(':', '<span class="c">:</span>');
+      lastText = text;
+      document.title = `${text} ${LABEL[S.phase]}`;
+    }
+
+    const elapsed = total() - rem, barMs = unit * 60000;
+    const idx = Math.min(bars.length - 1, Math.floor(elapsed / barMs));
+    const frac = 1 - (elapsed - idx * barMs) / barMs;
+    if (idx !== lastIdx) {
+      bars.forEach((b, i) => b.style.setProperty('--f', i < idx ? 0 : 1));
+      lastIdx = idx;
+      document.documentElement.style.setProperty('--accent', bars[idx]?.style.getPropertyValue('--c') || '#fff');
+    }
+    if (bars[idx]) bars[idx].style.setProperty('--f', Math.max(0, Math.min(1, frac)).toFixed(3));
+    el.fuse.parentElement.style.setProperty('--p', (rem / total()).toFixed(4));
+
+    el.state.textContent = Date.now() < flashUntil
+      ? flashMsg
+      : m === 'ready' ? (S.phase === 'focus' ? 'ready' : LABEL[S.phase]) : m === 'paused' ? 'paused' : LABEL[S.phase];
+
+    if (el.pips.children.length !== cfg.rounds) el.pips.innerHTML = '<i class="pip"></i>'.repeat(cfg.rounds);
+    [...el.pips.children].forEach((p, i) => {
+      p.className = 'pip' + (i < S.done ? ' done' : i === S.done && S.phase === 'focus' ? ' now' : '');
+    });
+
+    el.note.textContent = S.running
+      ? 'ends ' + new Date(S.endsAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+      : '';
+  }
+
+  /* interaction */
+  el.digits.addEventListener('click', toggle);
+  $('bPlay').addEventListener('click', toggle);
+  $('bSkip').addEventListener('click', () => advance(false));
+  $('bReset').addEventListener('click', resetPhase);
+  $('bSettings').addEventListener('click', () => api.openSettings('settings'));
+
+  addEventListener('keydown', e => {
+    if (e.code === 'Space') { e.preventDefault(); toggle(); }
+    else if (e.key === 'r' || e.key === 'R') resetPhase();
+    else if (e.key === 's' || e.key === 'S') advance(false);
+    else if (e.key === 'm' || e.key === 'M') api.setMini(!cfg.mini);
+  });
+
+  // drag from anywhere that isn't a control (own drag, so right-click and wheel keep working)
+  let drag = null;
+  addEventListener('pointerdown', e => {
+    if (e.button !== 0 || e.target.closest('button') || e.target.closest('.digits')) return;
+    drag = { sx: e.screenX, sy: e.screenY, wx: window.screenX, wy: window.screenY };
+    document.body.setPointerCapture?.(e.pointerId);
+  });
+  addEventListener('pointermove', e => {
+    if (drag) api.moveTo(drag.wx + e.screenX - drag.sx, drag.wy + e.screenY - drag.sy);
+  });
+  addEventListener('pointerup', () => { drag = null; });
+  addEventListener('dblclick', e => { if (!e.target.closest('button, .digits')) api.setMini(!cfg.mini); });
+  addEventListener('contextmenu', e => { e.preventDefault(); api.showMenu(); });
+
+  // wheel over the widget: glass opacity
+  let opTimer;
+  addEventListener('wheel', e => {
+    e.preventDefault();
+    cfg.opacity = Math.max(.12, Math.min(.96, +(cfg.opacity + (e.deltaY < 0 ? .05 : -.05)).toFixed(2)));
+    document.documentElement.style.setProperty('--a', cfg.opacity);
+    flash('glass ' + Math.round(cfg.opacity * 100) + '%');
+    clearTimeout(opTimer); opTimer = setTimeout(() => api.setState({ opacity: cfg.opacity }), 300);
+  }, { passive: false });
+
+  function applySettings(s) {
+    const prev = cfg;
+    cfg = { ...cfg, ...s };
+    document.documentElement.style.setProperty('--a', cfg.opacity);
+    const durChanged = JSON.stringify(prev.durations) !== JSON.stringify(cfg.durations);
+    if (durChanged || prev.rounds !== cfg.rounds) { S.done = 0; setPhase('focus'); }
+    else if (prev.theme !== cfg.theme) { build(); render(); }
+    else render();
+    if (cfg.locked && !prev.locked) flash('click-through', 4000);
+  }
+
+  // preview only: index.html?demo=phase,elapsed(0-1),run|pause,mini|full,doneRounds[,theme]
+  function demo() {
+    const q = new URLSearchParams(location.search).get('demo');
+    if (!q || window.ember) return false;
+    const [ph, e, st, size, done, theme] = q.split(',');
+    cfg.mini = size === 'mini'; S.done = +done || 0;
+    if (theme) cfg.theme = theme;
+    setPhase(ph); S.rem = total() * (1 - parseFloat(e));
+    if (st === 'run') start(); else render();
+    return true;
+  }
+
+  api.onSettings(applySettings);
+  api.onCommand(c => { if (c === 'toggle') toggle(); });
+  api.getState().then(s => {
+    cfg = { ...cfg, ...s };
+    document.documentElement.style.setProperty('--a', cfg.opacity);
+    if (!demo()) setPhase('focus');
+  });
+
+  setInterval(render, 200);
+  if (!demo()) setPhase('focus');
+})();
+</script>
+</body>
+</html>

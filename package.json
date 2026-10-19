@@ -1,0 +1,30 @@
+{
+  "name": "ember-pomodoro",
+  "productName": "Ember",
+  "version": "1.0.0",
+  "description": "A transparent, always-on-top pomodoro strip for Windows 11",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win portable"
+  },
+  "devDependencies": {
+    "electron": "^33.0.0",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "dev.sigmund.ember",
+    "productName": "Ember",
+    "files": [
+      "main.js",
+      "preload.js",
+      "index.html",
+      "settings.html",
+      "widget.css",
+      "common.js"
+    ],
+    "win": {
+      "target": "portable"
+    }
+  }
+}
