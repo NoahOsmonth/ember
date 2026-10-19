@@ -1,6 +1,9 @@
 const { app, BrowserWindow, ipcMain, Menu, globalShortcut, screen } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const { pathToFileURL } = require('url');
+const { createStore } = require('./store');
+const { createLogger } = require('./logger');
 
 const SIZES = { full: { width: 340, height: 96 }, mini: { width: 156, height: 58 } };
 const PRESETS = {
@@ -58,25 +61,60 @@ configureTestProfile();
 
 const stateFile = () => path.join(app.getPath('userData'), 'ember.json');
 let state = { ...DEFAULTS, x: null, y: null, locked: false, tutorialSeen: false };
+let store = null;
+let logger = createLogger({});
 let win, settingsWin;
 
-function load() {
-  try {
-    state = { ...state, ...JSON.parse(fs.readFileSync(stateFile(), 'utf8')) };
-  } catch {}
-  state.locked = false; // never start click-through
-}
-let saveTimer;
-function save() {
-  clearTimeout(saveTimer);
-  saveTimer = setTimeout(() => {
-    try {
-      fs.writeFileSync(stateFile(), JSON.stringify(state));
-    } catch {}
-  }, 250);
+/** Everything the settings document owns; `locked` is deliberately not persisted. */
+const PERSISTED_KEYS = Object.keys(DEFAULTS).concat(['x', 'y', 'tutorialSeen']);
+
+function persisted() {
+  const patch = {};
+  for (const key of PERSISTED_KEYS) patch[key] = state[key];
+  return patch;
 }
 
-const publicState = () => ({ ...state, launch: app.getLoginItemSettings().openAtLogin });
+/** Adopt the validated document as the live state. */
+function adopt(document) {
+  for (const key of PERSISTED_KEYS) {
+    if (document[key] !== undefined) state[key] = document[key];
+  }
+}
+
+function save() {
+  if (!store) return;
+  adopt(store.set(persisted()).value);
+}
+
+/**
+ * Bring up the settings store.
+ *
+ * `src/core` is ESM (docs/adr/0004-core-module-format.md) and this file is
+ * CommonJS, so the schema is loaded with a dynamic import and injected into the
+ * store rather than required.
+ */
+async function initSettings() {
+  const schemaUrl = pathToFileURL(path.join(__dirname, '../core/schema.js')).href;
+  try {
+    const schema = await import(schemaUrl);
+    logger = createLogger({ dir: app.getPath('logs') });
+    store = createStore({ file: stateFile(), schema, logger, debounceMs: 250 });
+    state = { ...state, ...store.get() };
+    state.locked = false; // never start click-through
+    logger.info(
+      `ember ${app.getVersion()} ready; settings mode=${store.mode} recovered=${store.recovered}`
+    );
+  } catch (error) {
+    store = null;
+    logger.error(`settings unavailable (${error && error.message}); running on defaults`);
+  }
+}
+
+const publicState = () => ({
+  ...state,
+  launch: app.getLoginItemSettings().openAtLogin,
+  settingsRecovered: store ? store.recovered : false,
+});
 function broadcast(except) {
   for (const w of BrowserWindow.getAllWindows()) {
     if (w !== except && !w.isDestroyed()) w.webContents.send('settings', publicState());
@@ -268,13 +306,22 @@ else {
       setLocked(false);
     }
   });
-  app.whenReady().then(() => {
-    load();
+  app.whenReady().then(async () => {
+    await initSettings();
     createWindow();
     globalShortcut.register('Control+Alt+P', () => (win.isVisible() ? win.hide() : win.show()));
     globalShortcut.register('Control+Alt+Space', () => win.webContents.send('command', 'toggle'));
     globalShortcut.register('Control+Alt+L', () => setLocked(!state.locked));
   });
-  app.on('will-quit', () => globalShortcut.unregisterAll());
-  app.on('window-all-closed', () => app.quit());
+  app.on('before-quit', () => {
+    if (store) store.flush();
+  });
+  app.on('will-quit', () => {
+    if (store) store.flush();
+    globalShortcut.unregisterAll();
+  });
+  app.on('window-all-closed', () => {
+    if (store) store.flush();
+    app.quit();
+  });
 }

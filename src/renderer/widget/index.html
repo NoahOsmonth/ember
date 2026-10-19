@@ -48,6 +48,7 @@
   let cfg = { ...C.DEFAULTS, locked: false };
   const S = { phase: 'focus', running: false, rem: 0, endsAt: 0, done: 0 };
   let bars = [], unit = 1, lastIdx = -2, lastText = '', flashUntil = 0, flashMsg = '';
+  let announcedRecovery = false;
 
   const mins = () => cfg.durations[S.phase];
   const total = () => mins() * 60000;
@@ -195,6 +196,8 @@
     else if (prev.theme !== cfg.theme) { build(); render(); }
     else render();
     if (cfg.locked && !prev.locked) flash('click-through', 4000);
+    // One quiet line when the settings file had to be repaired or replaced.
+    if (cfg.settingsRecovered && !announcedRecovery) { announcedRecovery = true; flash('settings reset', 4000); }
   }
 
   // preview only: index.html?demo=phase,elapsed(0-1),run|pause,mini|full,doneRounds[,theme]
@@ -215,6 +218,7 @@
     cfg = { ...cfg, ...s };
     document.documentElement.style.setProperty('--a', cfg.opacity);
     if (!demo()) setPhase('focus');
+    if (cfg.settingsRecovered) { announcedRecovery = true; flash('settings reset', 4000); }
   });
 
   setInterval(render, 200);

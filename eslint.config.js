@@ -35,8 +35,12 @@ module.exports = [
     },
   },
   {
-    files: ['src/main/**/*.js', 'src/preload/**/*.js', '*.config.js', 'test/**/*.js'],
+    files: ['src/main/**/*.js', 'src/preload/**/*.js', '*.config.js'],
     languageOptions: { globals: { ...globals.node } },
+  },
+  {
+    files: ['test/**/*.js', 'playwright.config.js'],
+    languageOptions: { sourceType: 'module', globals: { ...globals.node } },
   },
   {
     files: ['src/renderer/**/*.js'],

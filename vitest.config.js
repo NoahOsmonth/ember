@@ -5,15 +5,16 @@ module.exports = defineConfig({
     environment: 'jsdom',
     include: ['test/**/*.spec.js'],
     exclude: ['test/e2e/**', 'node_modules/**', 'dist/**'],
-    // Temporary: removed once the first unit tests land (durable-settings-store 1.6).
-    passWithNoTests: true,
+    // A green run means something actually ran: no empty-suite escape hatch.
+    passWithNoTests: false,
     coverage: {
       provider: 'v8',
       reporter: ['text', 'html', 'lcov'],
       reportsDirectory: 'coverage',
-      // Only the pure core modules are unit-testable; the prototype renderer and
-      // main-process files are exercised by the e2e/visual harness instead.
-      include: ['src/core/**/*.js'],
+      // The pure core modules plus the main-process modules that have no
+      // Electron dependency; the renderer and the window wiring are covered by
+      // the e2e/visual harness instead.
+      include: ['src/core/**/*.js', 'src/main/store.js', 'src/main/logger.js'],
       exclude: ['**/*.config.js', 'test/**'],
       thresholds: {
         lines: 80,
