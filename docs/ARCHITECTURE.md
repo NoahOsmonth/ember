@@ -25,6 +25,7 @@ src/
     package.json                declares "type": "module" for this subtree only
     schema.js                   versioned settings document: defaults, limits, migrations, normalize()
     validate.js                 IPC payload shapes: string, number, boolean, enum, object, array, optional
+    timer.js                    pure phase/status state machine driven by an injected clock
     ruler.js                    unitFor() and computeRuler(): bars and fill fractions from ms
     themes.js                   THEMES, themeNames(), resolveTheme(), barColor()
     README.md                   the purity rule for src/core
@@ -68,6 +69,31 @@ test/visual/                    fixture gallery and committed visual baselines
 
 Later changes move the timer itself into the main process (ADR 0001); the IPC
 surface is the seam where that happens.
+
+## Timer state machine
+
+`src/core/timer.js` is the timer the rest of the app will adopt. It is pure and
+host-driven: the host calls `tick(now)` and the machine derives the remaining
+time from `endsAtWall`. It never schedules anything, so a suspended host wakes
+to the correct value instead of a counter that stopped.
+
+- Phases: `focus`, `short`, `long`. Statuses: `idle`, `running`, `paused`,
+  `done`. An illegal transition is a no-op, never a throw.
+- Events: `phase-started`, `phase-complete`, `missed-while-away`. They are
+  emitted synchronously after the state is consistent, so a listener reading
+  `snapshot()` inside `phase-complete` sees the new phase.
+- A completed focus increments the round counter; the configured count selects
+  a long break; completing or skipping a long break resets the counter; a
+  skipped focus credits nothing and emits no `phase-complete`.
+- `applySettings()` stores the new settings and bumps `settingsRevision`, but a
+  running or paused phase keeps its duration and end instant. The next phase
+  reads the new durations (ADR 0005).
+- `snapshot()` is JSON-safe. `restore(saved, now)` advances at most one phase,
+  lands paused, and reports at most one `phase-complete` and one
+  `missed-while-away` after a long sleep.
+
+The widget still runs its inline timer until `timer-ownership-in-main` switches
+it to this machine.
 
 ## IPC channels
 

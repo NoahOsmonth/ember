@@ -4,6 +4,8 @@ out/
 coverage/
 test-results/
 playwright-report/
+.stryker-tmp/
+reports/
 package-lock.json
 openspec/
 roadmap.md

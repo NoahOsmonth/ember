@@ -33,6 +33,7 @@ root.
 | `npm test`             | Run the unit suite once.                               |
 | `npm run test:watch`   | Re-run unit tests on change.                           |
 | `npm run test:cov`     | Run unit tests with V8 coverage and thresholds.        |
+| `npm run test:mutation`| Run Stryker over `src/core/timer.js` (70% floor).      |
 | `npm run test:e2e`     | Run the Playwright launch tests against the real app.  |
 | `npm run test:visual`  | Run the visual regression suite (Windows baselines).   |
 | `npm run format`       | Prettier over the repository.                          |
@@ -70,7 +71,11 @@ reported problem and commit again; do not bypass the hook with
   directory; the app refuses to start if the variable is missing or relative.
 - Coverage thresholds (80% overall, 95% on `src/core`) are a floor. Raising them
   is welcome; lowering them is not.
-- Do not commit `test.skip`, `.only` or disabled suites.
+- Mutation testing is scoped to the module a change adds. The current gate is
+  `src/core/timer.js` at 70% (`npm run test:mutation`); widen `mutate` in
+  `stryker.config.json` as more core modules gain focused tests.
+- Do not commit `test.skip`, `.only` or disabled suites, except the documented
+  Windows-only visual matrix.
 
 ### Visual baselines
 

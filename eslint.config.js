@@ -18,6 +18,8 @@ module.exports = [
       'coverage/**',
       'test-results/**',
       'playwright-report/**',
+      '.stryker-tmp/**',
+      'reports/**',
       '.dsh/**',
       '.hormachuelos/**',
     ],
