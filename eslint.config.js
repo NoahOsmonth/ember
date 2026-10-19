@@ -35,7 +35,7 @@ module.exports = [
     },
   },
   {
-    files: ['src/main/**/*.js', 'src/preload/**/*.js', '*.config.js'],
+    files: ['src/main/**/*.js', 'src/preload/**/*.js', 'scripts/**/*.js', '*.config.js'],
     languageOptions: { globals: { ...globals.node } },
   },
   {
