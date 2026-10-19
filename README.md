@@ -4,14 +4,25 @@ Transparent, always-on-top pomodoro strip for Windows 11.
 
 ## Run
 
-1. Install Node.js 20+
-2. In this folder: `npm install` then `npm start`
+1. Install Node.js 22 or newer
+2. In this folder: `npm ci` then `npm start`
 
 The first launch opens an animated tutorial. Replay it any time from Settings, Tutorial.
 
 ## Build a portable .exe
 
 `npm run dist` (output in `dist/`)
+
+## Develop
+
+- `npm run lint`, `npm run typecheck`, `npm test` and `npm run test:cov` cover
+  the same checks CI runs on Windows.
+- `npm run format` keeps the tree Prettier-clean.
+- End-to-end tests launch the real Electron binary; see `CONTRIBUTING.md` for
+  the test-isolation rules.
+
+Where things live: `docs/ARCHITECTURE.md`. Decisions that constrain later work:
+`docs/adr/`. Contribution workflow: `CONTRIBUTING.md`.
 
 ## Open settings
 
