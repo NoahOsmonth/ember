@@ -18,6 +18,7 @@ const { channelSpecs } = require('./channels');
 const { registerTestChannels } = require('./test-support');
 const { createTimerService } = require('./timer-service');
 const { createPowerWatcher } = require('./power');
+const { createShortcuts } = require('./shortcuts');
 const { WEB_PREFERENCES, hardenWindow } = require('./security');
 
 const SIZES = { full: { width: 340, height: 96 }, mini: { width: 156, height: 58 } };
@@ -83,6 +84,7 @@ let store = null;
 let logger = createLogger({});
 let timerService = null;
 let powerWatcher = null;
+let shortcuts = null;
 let win, settingsWin;
 
 /** Everything the settings document owns; `locked` is deliberately not persisted. */
@@ -104,6 +106,22 @@ function adopt(document) {
 function save() {
   if (!store) return;
   adopt(store.set(persisted()).value);
+}
+
+/**
+ * Adopt a successful shortcut mutation. The shortcuts module persists directly
+ * to the store, so the in-memory document has to follow or `state:get` would
+ * keep reporting the old binding.
+ *
+ * @param {any} result
+ */
+function adoptShortcuts(result) {
+  if (!result || !result.ok) return result;
+  const next = {};
+  for (const binding of result.bindings) next[binding.id] = binding.accelerator;
+  state = /** @type {any} */ ({ ...state, shortcuts: next });
+  broadcast();
+  return result;
 }
 
 /**
@@ -185,6 +203,51 @@ async function initTimer() {
   } catch (error) {
     timerService = null;
     logger.error(`timer unavailable (${error && error.message}); the widget cannot start a phase`);
+  }
+}
+
+/**
+ * Route a registered shortcut to the same action the menu uses.
+ *
+ * @param {string} id
+ */
+function shortcutAction(id) {
+  if (id === 'showHide') {
+    if (!win || win.isDestroyed()) return;
+    if (win.isVisible()) win.hide();
+    else win.show();
+    return;
+  }
+  if (id === 'toggle') {
+    timerService?.toggle();
+    return;
+  }
+  if (id === 'lock') setLocked(!state.locked);
+}
+
+/**
+ * Construct the shortcut owner after settings load, so safe mode is known, and
+ * register every binding. A failed registration is recorded, not thrown away.
+ */
+async function initShortcuts() {
+  try {
+    shortcuts = await createShortcuts({
+      store,
+      logger,
+      onAction: shortcutAction,
+      safeMode: false,
+      globalShortcut,
+    });
+    const status = shortcuts.registerAll();
+    const inactive = status.bindings.filter((binding) => binding.status !== 'active');
+    logger.info(
+      inactive.length === 0
+        ? 'global shortcuts ready'
+        : `global shortcuts inactive: ${inactive.map((binding) => binding.id).join(', ')}`
+    );
+  } catch (error) {
+    shortcuts = null;
+    logger.error(`shortcuts unavailable (${error && error.message})`);
   }
 }
 
@@ -424,6 +487,21 @@ async function initIpc() {
     'timer:skip': () => timerService.skip(),
     'timer:reset': () => timerService.reset(),
     'timer:subscribe': () => timerService.subscribe(),
+    'shortcuts:get': () => (shortcuts ? shortcuts.getStatus() : { safeMode: false, bindings: [] }),
+    'shortcuts:rebind': (payload) =>
+      adoptShortcuts(
+        shortcuts
+          ? shortcuts.rebind(payload.id, payload.accelerator)
+          : { ok: false, code: 'unavailable', message: 'shortcuts unavailable', bindings: [] }
+      ),
+    'shortcuts:reset': () =>
+      adoptShortcuts(
+        shortcuts
+          ? shortcuts.reset()
+          : { ok: false, code: 'unavailable', message: 'shortcuts unavailable', bindings: [] }
+      ),
+    'shortcuts:check': () =>
+      shortcuts ? shortcuts.registerAll() : { safeMode: false, bindings: [] },
   };
 
   for (const spec of channelSpecs(v)) {
@@ -446,6 +524,7 @@ else {
   app.whenReady().then(async () => {
     await initSettings();
     await initTimer();
+    await initShortcuts();
     await initIpc();
     createWindow();
     powerWatcher = createPowerWatcher({
@@ -463,17 +542,16 @@ else {
       getWindow: () => win,
       suspend: (ms) => (powerWatcher ? powerWatcher.handleResume(ms) : null),
     });
-    globalShortcut.register('Control+Alt+P', () => (win.isVisible() ? win.hide() : win.show()));
-    globalShortcut.register('Control+Alt+Space', () => timerService?.toggle());
-    globalShortcut.register('Control+Alt+L', () => setLocked(!state.locked));
   });
   app.on('before-quit', () => {
     if (powerWatcher) powerWatcher.dispose();
+    if (shortcuts) shortcuts.dispose();
     if (timerService) timerService.dispose();
     if (store) store.flush();
   });
   app.on('will-quit', () => {
     if (powerWatcher) powerWatcher.dispose();
+    if (shortcuts) shortcuts.dispose();
     if (timerService) timerService.dispose();
     if (store) store.flush();
     globalShortcut.unregisterAll();

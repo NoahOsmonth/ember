@@ -7,6 +7,7 @@
  */
 
 import { themeNames } from './themes.js';
+import { canonicalAccelerator } from './accelerators.js';
 
 /** Schema version written by this build. */
 export const CURRENT_VERSION = 1;
@@ -24,6 +25,9 @@ export const LIMITS = Object.freeze({
   opacity: Object.freeze({ min: 0.2, max: 1, integer: false }),
 });
 
+/** The global shortcuts the app owns, in the order the settings window lists them. */
+export const SHORTCUT_IDS = Object.freeze(['showHide', 'toggle', 'lock']);
+
 /** The document a fresh install starts from. Frozen; normalize always copies. */
 export const defaults = Object.freeze({
   schemaVersion: CURRENT_VERSION,
@@ -38,6 +42,11 @@ export const defaults = Object.freeze({
   opacity: 0.62,
   mini: false,
   onTop: true,
+  shortcuts: Object.freeze({
+    showHide: 'Control+Alt+P',
+    toggle: 'Control+Alt+Space',
+    lock: 'Control+Alt+L',
+  }),
   x: null,
   y: null,
   tutorialSeen: false,
@@ -192,6 +201,46 @@ export function normalize(raw) {
       value[path] = rawValue;
     } else {
       issues.push(issue(path, 'invalid-type', 'expected a finite number or null'));
+    }
+  }
+
+  if (doc.shortcuts !== undefined) {
+    if (!isPlainObject(doc.shortcuts)) {
+      issues.push(issue('shortcuts', 'invalid-type', 'expected an object'));
+    } else {
+      for (const id of SHORTCUT_IDS) {
+        const rawValue = doc.shortcuts[id];
+        if (rawValue === undefined) continue;
+        const accelerator = canonicalAccelerator(rawValue);
+        if (accelerator === null) {
+          issues.push(
+            issue(`shortcuts.${id}`, 'invalid-accelerator', 'expected a parseable accelerator')
+          );
+          continue;
+        }
+        value.shortcuts[id] = accelerator;
+      }
+      for (const key of Object.keys(doc.shortcuts)) {
+        if (!SHORTCUT_IDS.includes(key)) {
+          issues.push(issue(`shortcuts.${key}`, 'unknown-key', 'key is not part of the schema'));
+        }
+      }
+    }
+  }
+
+  // A hand-edited document can give two actions the same combination. The
+  // later one falls back to its default; registration reports a conflict when
+  // even that is taken.
+  const seen = new Map();
+  for (const id of SHORTCUT_IDS) {
+    const accelerator = value.shortcuts[id];
+    if (seen.has(accelerator)) {
+      issues.push(
+        issue(`shortcuts.${id}`, 'duplicate-accelerator', `same as ${seen.get(accelerator)}`)
+      );
+      value.shortcuts[id] = defaults.shortcuts[id];
+    } else {
+      seen.set(accelerator, id);
     }
   }
 

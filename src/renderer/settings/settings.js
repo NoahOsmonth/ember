@@ -37,6 +37,16 @@ export function createSettings({ api = /** @type {any} */ (globalThis).ember } =
   /** @type {any} */
   let cfg = { ...C.DEFAULTS, launch: false };
 
+  /** Latest binding status from the main process. */
+  let shortcutState = /** @type {{ safeMode: boolean, bindings: any[] }} */ ({
+    safeMode: false,
+    bindings: [],
+  });
+  /** The row currently listening for keys, if any. */
+  let capture = /** @type {{ id: string, pending: string|null, error: string|null } | null} */ (
+    null
+  );
+
   /* ---------- tabs ---------- */
   const tabs = $$('#tabs button');
   function placePill() {
@@ -86,6 +96,27 @@ export function createSettings({ api = /** @type {any} */ (globalThis).ember } =
   });
   on($('#close'), 'click', () => api.win.close());
   on(window, 'keydown', (event) => {
+    if (capture) {
+      // The capture field owns the keyboard while it is open.
+      event.preventDefault();
+      event.stopPropagation();
+      if (event.key === 'Escape') {
+        capture = null;
+        renderShortcuts();
+        return;
+      }
+      const accelerator = C.acceleratorFromCode(event.code, event);
+      if (!accelerator) return;
+      if (!event.ctrlKey && !event.altKey && !event.shiftKey && !event.metaKey) {
+        capture.error = STRINGS.shortcuts.needsModifier;
+        renderShortcuts();
+        return;
+      }
+      capture.pending = accelerator;
+      capture.error = null;
+      renderShortcuts();
+      return;
+    }
     if (event.key === 'Escape') api.win.close();
   });
 
@@ -215,6 +246,7 @@ export function createSettings({ api = /** @type {any} */ (globalThis).ember } =
     text($('#lock'), cfg.locked ? STRINGS.lockOn : STRINGS.lockOff);
     setStyle(document.documentElement, '--acc', C.barColor(cfg.theme, 'focus', 7, 12));
     tutorial.theme();
+    renderShortcuts();
   }
 
   if (api.onSettings)
@@ -222,6 +254,111 @@ export function createSettings({ api = /** @type {any} */ (globalThis).ember } =
       cfg = { ...cfg, ...settings };
       paint();
     });
+
+  /* ---------- shortcuts ---------- */
+  const shortcutList = $('#shortcutList');
+
+  const displayKey = (part) => (part === 'Control' ? 'Ctrl' : part);
+
+  /** @param {string} accelerator */
+  function keyChips(accelerator) {
+    const wrap = el('span', { class: 's-keys' });
+    for (const part of accelerator.split('+')) {
+      wrap.append(el('kbd', { text: displayKey(part) }));
+    }
+    return wrap;
+  }
+
+  /** @param {any} binding */
+  function shortcutStatus(binding) {
+    if (capture && capture.id === binding.id) {
+      return capture.error || STRINGS.shortcuts.captureHint;
+    }
+    if (binding.status === 'conflict' && binding.message) return binding.message;
+    return STRINGS.shortcuts[binding.status] || binding.status;
+  }
+
+  function renderShortcuts() {
+    if (!shortcutList) return;
+    shortcutList.replaceChildren();
+    for (const binding of shortcutState.bindings) {
+      const active = !capture || capture.id !== binding.id;
+      const problem = active && binding.status !== 'active';
+      const label = el('span');
+      label.append(
+        document.createTextNode(binding.label),
+        el('small', {
+          class: problem ? 's-shortcut-status bad' : 's-shortcut-status',
+          text: shortcutStatus(binding),
+        })
+      );
+
+      const actions = el('div', { class: 's-shortcut-actions' });
+      if (!active) {
+        if (capture && capture.pending) {
+          actions.append(keyChips(capture.pending));
+          const save = el('button', {
+            class: 's-btn s-shortcut-save',
+            text: STRINGS.shortcuts.save,
+          });
+          const cancel = el('button', {
+            class: 's-btn s-shortcut-cancel',
+            text: STRINGS.shortcuts.cancel,
+          });
+          on(save, 'click', () => saveCapture());
+          on(cancel, 'click', () => {
+            capture = null;
+            renderShortcuts();
+          });
+          actions.append(save, cancel);
+        } else {
+          actions.append(
+            el('button', {
+              class: 's-btn s-shortcut-capture',
+              text: STRINGS.shortcuts.capture,
+            })
+          );
+        }
+      } else {
+        const change = el('button', {
+          class: 's-btn s-shortcut-change',
+          'aria-label': `Change ${binding.label}`,
+        });
+        change.append(keyChips(binding.accelerator));
+        on(change, 'click', () => {
+          capture = { id: binding.id, pending: null, error: null };
+          renderShortcuts();
+        });
+        actions.append(change);
+      }
+
+      const row = el('div', { class: 's-row', dataset: { shortcutId: binding.id } });
+      row.append(label, actions);
+      shortcutList.append(row);
+    }
+  }
+
+  async function saveCapture() {
+    if (!capture || !capture.pending) return;
+    const { id, pending } = capture;
+    const result = await call(api.shortcuts.rebind, { id, accelerator: pending });
+    if (result && result.ok) {
+      shortcutState = { ...shortcutState, bindings: result.bindings };
+      capture = null;
+    } else if (result) {
+      capture.error = result.message || STRINGS.shortcuts.invalid;
+    }
+    renderShortcuts();
+  }
+
+  on($('#shortcutRecheck'), 'click', async () => {
+    const status = await call(api.shortcuts.check);
+    if (status) {
+      shortcutState = status;
+      capture = null;
+      renderShortcuts();
+    }
+  });
 
   /* ---------- tutorial ---------- */
   const tutorial = (() => {
@@ -594,6 +731,12 @@ export function createSettings({ api = /** @type {any} */ (globalThis).ember } =
     if (settings) {
       cfg = { ...cfg, ...settings };
       paint();
+    }
+  });
+  call(api.shortcuts && api.shortcuts.get).then((status) => {
+    if (status) {
+      shortcutState = status;
+      renderShortcuts();
     }
   });
   const tab = new URLSearchParams(location.search).get('tab');

@@ -88,6 +88,12 @@ function createApi(renderer) {
       onSnapshot: (callback) => on('timer:snapshot', callback),
       onPhaseComplete: (callback) => on('timer:phase-complete', callback),
     },
+    shortcuts: {
+      get: () => invoke('shortcuts:get'),
+      rebind: (payload) => invoke('shortcuts:rebind', payload),
+      reset: () => invoke('shortcuts:reset'),
+      check: () => invoke('shortcuts:check'),
+    },
     // Explicit test-only methods. They are harmless in a release build: no
     // handler is registered, so each resolves to `{ ok: false, code:
     // 'unknown-channel' }`. The contract test excludes this namespace.

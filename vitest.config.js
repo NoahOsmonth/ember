@@ -25,6 +25,7 @@ module.exports = defineConfig({
         'src/main/timer-service.js',
         'src/main/security.js',
         'src/main/power.js',
+        'src/main/shortcuts.js',
         'src/renderer/**/*.js',
       ],
       exclude: ['**/*.config.js', 'test/**'],

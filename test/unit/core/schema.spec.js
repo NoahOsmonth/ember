@@ -126,6 +126,55 @@ describe('field table', () => {
   });
 });
 
+describe('shortcut bindings', () => {
+  it('defaults every action to a canonical accelerator', () => {
+    expect(defaults.shortcuts).toEqual({
+      showHide: 'Control+Alt+P',
+      toggle: 'Control+Alt+Space',
+      lock: 'Control+Alt+L',
+    });
+  });
+
+  it('canonicalizes an accepted binding', () => {
+    const { value, issues } = normalize({ shortcuts: { showHide: 'ctrl+alt+j' } });
+    expect(value.shortcuts.showHide).toBe('Control+Alt+J');
+    expect(issues).toEqual([]);
+  });
+
+  it('falls back to the default for an unparsable binding', () => {
+    const { value, issues } = normalize({ shortcuts: { toggle: 'Control+Nope' } });
+    expect(value.shortcuts.toggle).toBe(defaults.shortcuts.toggle);
+    expect(issues).toEqual([
+      expect.objectContaining({ path: 'shortcuts.toggle', code: 'invalid-accelerator' }),
+    ]);
+  });
+
+  it('reports an unknown action and drops it', () => {
+    const { value, issues } = normalize({ shortcuts: { explode: 'Control+Alt+E' } });
+    expect(value.shortcuts).not.toHaveProperty('explode');
+    expect(issues).toEqual([
+      expect.objectContaining({ path: 'shortcuts.explode', code: 'unknown-key' }),
+    ]);
+  });
+
+  it('resolves a duplicate to the later action default', () => {
+    const { value, issues } = normalize({
+      shortcuts: { showHide: 'Control+Alt+J', toggle: 'Control+Alt+J' },
+    });
+    expect(value.shortcuts.showHide).toBe('Control+Alt+J');
+    expect(value.shortcuts.toggle).toBe(defaults.shortcuts.toggle);
+    expect(issues).toEqual([
+      expect.objectContaining({ path: 'shortcuts.toggle', code: 'duplicate-accelerator' }),
+    ]);
+  });
+
+  it('rejects a non-object shortcuts value', () => {
+    const { value, issues } = normalize({ shortcuts: 'Control+Alt+P' });
+    expect(value.shortcuts).toEqual(clone(defaults.shortcuts));
+    expect(issues).toEqual([expect.objectContaining({ path: 'shortcuts', code: 'invalid-type' })]);
+  });
+});
+
 describe('migration from version 0', () => {
   it('is the only registered migration and lands on the current version', () => {
     expect(migrations.map((entry) => [entry.from, entry.to])).toEqual([[0, CURRENT_VERSION]]);

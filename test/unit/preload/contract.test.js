@@ -183,6 +183,26 @@ describe('preload forwards to the right channel', () => {
       method: 'invoke',
       args: ['timer:subscribe', undefined],
     },
+    'shortcuts:get': {
+      call: () => api.shortcuts.get(),
+      method: 'invoke',
+      args: ['shortcuts:get', undefined],
+    },
+    'shortcuts:rebind': {
+      call: () => api.shortcuts.rebind({ id: 'toggle', accelerator: 'Control+Alt+J' }),
+      method: 'invoke',
+      args: ['shortcuts:rebind', { id: 'toggle', accelerator: 'Control+Alt+J' }],
+    },
+    'shortcuts:reset': {
+      call: () => api.shortcuts.reset(),
+      method: 'invoke',
+      args: ['shortcuts:reset', undefined],
+    },
+    'shortcuts:check': {
+      call: () => api.shortcuts.check(),
+      method: 'invoke',
+      args: ['shortcuts:check', undefined],
+    },
   };
 
   it('covers every registry channel', () => {

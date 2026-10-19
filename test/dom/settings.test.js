@@ -23,12 +23,39 @@ const $all = (selector) => /** @type {any[]} */ ([...document.querySelectorAll(s
 
 const ok = (value = null) => ({ ok: true, value });
 
+const shortcutBindings = (overrides = {}) =>
+  [
+    {
+      id: 'showHide',
+      label: 'Show or hide',
+      accelerator: 'Control+Alt+P',
+      status: 'active',
+      message: '',
+    },
+    {
+      id: 'toggle',
+      label: 'Start or pause',
+      accelerator: 'Control+Alt+Space',
+      status: 'active',
+      message: '',
+    },
+    {
+      id: 'lock',
+      label: 'Click-through',
+      accelerator: 'Control+Alt+L',
+      status: 'active',
+      message: '',
+    },
+  ].map((binding) => ({ ...binding, ...(overrides[binding.id] || {}) }));
+
 function fakeApi() {
   const calls = [];
   /** @type {(value?: any) => void} */
   let settingsHandler = () => {};
   /** @type {(value?: any) => void} */
   let tabHandler = () => {};
+  /** @type {((id: string, accelerator: string) => any) | null} */
+  let rebindResult = null;
   return {
     calls,
     state: {
@@ -54,6 +81,23 @@ function fakeApi() {
         return ok();
       },
     },
+    shortcuts: {
+      get: async () => ok({ safeMode: false, bindings: shortcutBindings() }),
+      rebind: async ({ id, accelerator }) => {
+        calls.push({ name: 'shortcuts.rebind', args: [{ id, accelerator }] });
+        if (rebindResult) return ok(rebindResult(id, accelerator));
+        return ok({
+          ok: true,
+          code: 'ok',
+          bindings: shortcutBindings({ [id]: { accelerator, status: 'active' } }),
+        });
+      },
+      reset: async () => ok({ ok: true, code: 'ok', bindings: shortcutBindings() }),
+      check: async () => {
+        calls.push({ name: 'shortcuts.check', args: [] });
+        return ok({ safeMode: false, bindings: shortcutBindings() });
+      },
+    },
     app: { quit: () => calls.push({ name: 'app.quit', args: [] }) },
     onSettings: (handler) => {
       settingsHandler = handler;
@@ -62,6 +106,9 @@ function fakeApi() {
     onTab: (handler) => {
       tabHandler = handler;
       return () => {};
+    },
+    setRebindResult: (fn) => {
+      rebindResult = fn;
     },
     emitSettings: (settings) => settingsHandler(settings),
     emitTab: (tab) => tabHandler(tab),
@@ -306,6 +353,94 @@ describe('settings renderer', () => {
     expect(inputOf('rounds').value).toBe('2');
     expect($id('lock').textContent).toBe(STRINGS.lockOn);
     expect(rangeByKey('opacity').value).toBe('20');
+  });
+
+  it('lists one row per shortcut binding with its key chips', () => {
+    const rows = $all('#shortcutList .s-row');
+    expect(rows.map((row) => row.dataset.shortcutId)).toEqual(['showHide', 'toggle', 'lock']);
+    expect(rows[0].querySelector('.s-shortcut-status').textContent).toBe(STRINGS.shortcuts.active);
+    expect([...rows[0].querySelectorAll('kbd')].map((kbd) => kbd.textContent)).toEqual([
+      'Ctrl',
+      'Alt',
+      'P',
+    ]);
+    expect(rows[0].querySelector('.s-shortcut-change')).toBeTruthy();
+  });
+
+  it('captures a key combination and saves the rebind', async () => {
+    $sel('[data-shortcut-id="showHide"] .s-shortcut-change').click();
+    expect($sel('[data-shortcut-id="showHide"] .s-shortcut-capture')).toBeTruthy();
+    expect($sel('[data-shortcut-id="showHide"] .s-shortcut-status').textContent).toBe(
+      STRINGS.shortcuts.captureHint
+    );
+
+    window.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'j', code: 'KeyJ', ctrlKey: true, altKey: true })
+    );
+    const save = $sel('[data-shortcut-id="showHide"] .s-shortcut-save');
+    expect(save).toBeTruthy();
+    save.click();
+    await flush();
+
+    expect(api.calls.find((call) => call.name === 'shortcuts.rebind').args).toEqual([
+      { id: 'showHide', accelerator: 'Control+Alt+J' },
+    ]);
+    expect($sel('[data-shortcut-id="showHide"] .s-shortcut-change')).toBeTruthy();
+    expect([...$all('[data-shortcut-id="showHide"] kbd')].map((kbd) => kbd.textContent)).toEqual([
+      'Ctrl',
+      'Alt',
+      'J',
+    ]);
+  });
+
+  it('requires a modifier before a captured key can be saved', () => {
+    $sel('[data-shortcut-id="toggle"] .s-shortcut-change').click();
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'j', code: 'KeyJ' }));
+
+    expect($sel('[data-shortcut-id="toggle"] .s-shortcut-status').textContent).toBe(
+      STRINGS.shortcuts.needsModifier
+    );
+    expect($sel('[data-shortcut-id="toggle"] .s-shortcut-save')).toBeFalsy();
+  });
+
+  it('keeps the capture open and shows the conflict message', async () => {
+    api.setRebindResult(() => ({
+      ok: false,
+      code: 'conflict',
+      message: 'already used by Click-through',
+      conflictWith: 'lock',
+      bindings: shortcutBindings(),
+    }));
+
+    $sel('[data-shortcut-id="showHide"] .s-shortcut-change').click();
+    window.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'l', code: 'KeyL', ctrlKey: true, altKey: true })
+    );
+    $sel('[data-shortcut-id="showHide"] .s-shortcut-save').click();
+    await flush();
+
+    expect($sel('[data-shortcut-id="showHide"] .s-shortcut-status').textContent).toBe(
+      'already used by Click-through'
+    );
+    expect($sel('[data-shortcut-id="showHide"] .s-shortcut-save')).toBeTruthy();
+  });
+
+  it('cancels a capture on Escape instead of closing the window', () => {
+    $sel('[data-shortcut-id="showHide"] .s-shortcut-change').click();
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape' }));
+
+    expect(api.calls.filter((call) => call.name === 'win.close')).toHaveLength(0);
+    expect($sel('[data-shortcut-id="showHide"] .s-shortcut-change')).toBeTruthy();
+  });
+
+  it('re-checks registrations on demand', async () => {
+    $id('shortcutRecheck').click();
+    await flush();
+
+    expect(api.calls.some((call) => call.name === 'shortcuts.check')).toBe(true);
+    expect($sel('[data-shortcut-id="showHide"] .s-shortcut-status').textContent).toBe(
+      STRINGS.shortcuts.active
+    );
   });
 
   it('runs the tutorial controls and stops cleanly', async () => {

@@ -59,6 +59,17 @@ function channelSpecs(v) {
     { name: 'timer:skip', kind: 'invoke', schema: none },
     { name: 'timer:reset', kind: 'invoke', schema: none },
     { name: 'timer:subscribe', kind: 'invoke', schema: none },
+    { name: 'shortcuts:get', kind: 'invoke', schema: none },
+    {
+      name: 'shortcuts:rebind',
+      kind: 'invoke',
+      schema: v.object({
+        id: v.enum(['showHide', 'toggle', 'lock']),
+        accelerator: v.string({ minLength: 1, maxLength: 64 }),
+      }),
+    },
+    { name: 'shortcuts:reset', kind: 'invoke', schema: none },
+    { name: 'shortcuts:check', kind: 'invoke', schema: none },
   ];
 }
 

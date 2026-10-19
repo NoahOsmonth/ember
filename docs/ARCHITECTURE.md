@@ -18,6 +18,7 @@ src/
   main/logger.js                rotating diagnostic log that never throws
   main/security.js              hardened webPreferences, navigation guards, openExternal allowlist
   main/power.js                 suspend/resume, clock-jump policy, display and unlock reassertion
+  main/shortcuts.js             global shortcut ownership: per-binding status, rebind, reset
   preload/index.js              explicit contextBridge surface exposed as window.ember
   renderer/
     widget/index.html           the always-on-top timer strip (markup + CSP only)
@@ -167,9 +168,20 @@ handler runs and returns an envelope instead of throwing.
 | `timer:skip`      | invoke | none                            | the snapshot           |
 | `timer:reset`     | invoke | none                            | the snapshot           |
 | `timer:subscribe` | invoke | none                            | `{ snapshot, notice }` |
+| `shortcuts:get`   | invoke | none                            | `{ safeMode, bindings }` |
+| `shortcuts:rebind` | invoke | `{ id, accelerator }`          | the rebind result      |
+| `shortcuts:reset` | invoke | none                            | the rebind result      |
+| `shortcuts:check` | invoke | none                            | `{ safeMode, bindings }` |
 
 `timer:snapshot` and `timer:phase-complete` are push channels from main to every
 window; they are not request channels and have no registry entry.
+
+Global shortcuts are owned by `src/main/shortcuts.js`. Every registration
+result is recorded: a combination another application owns is reported as
+`unavailable` instead of being dropped, and a stored duplicate is reported as
+`conflict`. A rebind registers the candidate while the old binding is still
+held, then releases the old one and persists; a rejection leaves the old
+binding active. `reset` restores the defaults, and safe mode registers nothing.
 
 Failure codes are `invalid-payload` (with `issues`), `handler-error`, and
 `unknown-channel`. The preload maps Electron's unknown-handler rejection to the

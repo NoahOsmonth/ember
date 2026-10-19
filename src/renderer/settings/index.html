@@ -78,6 +78,9 @@
   .s-btn.warn:hover { border-color: #ff7a6b; color: #ffb4aa; }
 
   .s-keys { display: flex; gap: 4px; }
+  .s-shortcut-actions { display: flex; align-items: center; gap: 6px; flex: none; }
+  .s-shortcut-change { display: flex; align-items: center; gap: 4px; }
+  .s-shortcut-status.bad { color: #ff9d8f; }
   kbd, .t-key kbd { font: 11.5px/1 "Segoe UI Variable Text", "Segoe UI", sans-serif; padding: 4px 7px 5px; border-radius: 6px; background: rgba(255,255,255,.1); box-shadow: inset 0 -1.5px 0 rgba(255,255,255,.14); color: rgba(255,255,255,.9); }
 
   .s-actions { display: flex; flex-wrap: wrap; gap: 8px; padding-top: 22px; }
@@ -177,9 +180,8 @@
 
     <div class="s-group">
       <h2>Shortcuts</h2>
-      <div class="s-row"><span>Start or pause, from any app</span><span class="s-keys"><kbd>Ctrl</kbd><kbd>Alt</kbd><kbd>Space</kbd></span></div>
-      <div class="s-row"><span>Hide or show</span><span class="s-keys"><kbd>Ctrl</kbd><kbd>Alt</kbd><kbd>P</kbd></span></div>
-      <div class="s-row"><span>Click-through on or off</span><span class="s-keys"><kbd>Ctrl</kbd><kbd>Alt</kbd><kbd>L</kbd></span></div>
+      <div id="shortcutList"></div>
+      <div class="s-row"><span>Already taken by another app?<small>Re-check every binding</small></span><button class="s-btn" id="shortcutRecheck">Re-check</button></div>
       <div class="s-row"><span>With the widget focused</span><span class="s-keys"><kbd>Space</kbd><kbd>S</kbd><kbd>R</kbd><kbd>M</kbd></span></div>
     </div>
 
