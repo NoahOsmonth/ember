@@ -16,10 +16,15 @@ const FIRST_SNAPSHOT_TIMEOUT = 20_000;
  * is then supplied through Chromium's `--user-data-dir` switch, so even that
  * launch cannot touch the developer's real profile.
  *
- * @param {{ testMode?: boolean, env?: Record<string, string>, userDataDir?: string }} [options]
+ * @param {{ testMode?: boolean, env?: Record<string, string>, userDataDir?: string, args?: string[] }} [options]
  * @returns {Promise<{ app: any, page: any, userDataDir: string, close: (options?: { keep?: boolean }) => Promise<void>, attach: (testInfo: any) => Promise<void> }>}
  */
-async function launchEmber({ testMode = true, env = {}, userDataDir: providedDir } = {}) {
+async function launchEmber({
+  testMode = true,
+  env = {},
+  userDataDir: providedDir,
+  args: extraArgs = [],
+} = {}) {
   const userDataDir = providedDir || fs.mkdtempSync(path.join(os.tmpdir(), 'ember-e2e-'));
   const baseEnv = { ...process.env };
   delete baseEnv.EMBER_TEST;
@@ -29,7 +34,7 @@ async function launchEmber({ testMode = true, env = {}, userDataDir: providedDir
   // (Windows 11 build 26300 crashes Electron 33 before the app loads). CI
   // leaves this unset, so the shipped sandbox configuration is what runs there.
   const extra = (process.env.EMBER_E2E_ELECTRON_ARGS || '').split(/\s+/).filter(Boolean);
-  const args = ['.', ...extra];
+  const args = ['.', ...extra, ...extraArgs];
   if (testMode) {
     baseEnv.EMBER_TEST = '1';
     baseEnv.EMBER_USER_DATA = userDataDir;

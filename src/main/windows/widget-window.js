@@ -49,6 +49,7 @@ const intersects = (a, b) => {
  * @param {string} options.page absolute HTML path
  * @param {(win: any) => void} [options.onReady] after the page has loaded
  * @param {() => void} [options.onClosed] after the window is gone
+ * @param {boolean} [options.safeMode] opaque window, never always-on-top
  * @param {any} [options.logger]
  */
 function createWidgetWindow({
@@ -60,6 +61,7 @@ function createWidgetWindow({
   page,
   onReady = () => {},
   onClosed = () => {},
+  safeMode = false,
   logger = null,
 }) {
   const { clampToWorkArea, dockRight, pickDisplay, nextScaleFactor } = geometry;
@@ -124,6 +126,44 @@ function createWidgetWindow({
   function cursorPoint() {
     if (testCursor) return { ...testCursor };
     return screen.getCursorScreenPoint();
+  }
+
+  /**
+   * The display nearest a point, honouring the test display list.
+   *
+   * @param {{ x: number, y: number }} point
+   * @returns {Display | null}
+   */
+  function displayAt(point) {
+    if (!point || !Number.isFinite(point.x) || !Number.isFinite(point.y)) return null;
+    if (!testDisplays) {
+      const display = screen.getDisplayNearestPoint(point);
+      if (display) {
+        const primaryId = screen.getPrimaryDisplay().id;
+        return {
+          id: display.id,
+          workArea: display.workArea,
+          scaleFactor: display.scaleFactor || 1,
+          isPrimary: display.id === primaryId,
+        };
+      }
+    }
+    const distance = (display) => {
+      const area = display.workArea;
+      const dx = Math.max(area.x - point.x, 0, point.x - (area.x + area.width));
+      const dy = Math.max(area.y - point.y, 0, point.y - (area.y + area.height));
+      return dx * dx + dy * dy;
+    };
+    let best = null;
+    let bestDistance = Infinity;
+    for (const display of listDisplays()) {
+      const value = distance(display);
+      if (value < bestDistance) {
+        best = display;
+        bestDistance = value;
+      }
+    }
+    return best || primaryDisplay();
   }
 
   /** @param {Size} size @param {Rect} area */
@@ -403,15 +443,15 @@ function createWidgetWindow({
     win = new BrowserWindow({
       ...bounds,
       frame: false,
-      transparent: true,
-      backgroundColor: '#00000000',
+      transparent: !safeMode,
+      backgroundColor: safeMode ? '#08090d' : '#00000000',
       resizable: false,
       maximizable: false,
       minimizable: false,
       fullscreenable: false,
       skipTaskbar: true,
       hasShadow: false,
-      alwaysOnTop: true,
+      alwaysOnTop: !safeMode,
       title: 'Ember',
       webPreferences: {
         ...WEB_PREFERENCES,
@@ -419,7 +459,7 @@ function createWidgetWindow({
       },
     });
     hardenWindow(win, { file: page });
-    win.setAlwaysOnTop(settings().onTop, 'screen-saver');
+    win.setAlwaysOnTop(!safeMode && settings().onTop, 'screen-saver');
     win.loadFile(page);
     win.webContents.on('did-finish-load', () => onReady(win));
     win.on('move', schedulePersist);
@@ -462,6 +502,9 @@ function createWidgetWindow({
     startDrag,
     endDrag,
     currentPlacement,
+    listDisplays,
+    displayAt,
+    getCursor: cursorPoint,
     setTestDisplays,
     setTestCursor,
     dispose,

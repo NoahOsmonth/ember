@@ -221,6 +221,7 @@ export function createSettings({
   on($('#lock'), 'click', () => call(api.win.lock, true));
   on($('#replay'), 'click', () => switchTab('tutorial'));
   on($('#reset'), 'click', () => call(api.state.reset));
+  on($('#safeReset'), 'click', () => call(api.state.reset));
   on($('#quit'), 'click', () => api.app.quit());
 
   function paint() {
@@ -244,12 +245,16 @@ export function createSettings({
     );
     text(
       $('#bgNote'),
-      cfg.solidOverride === 'env'
-        ? 'forced by EMBER_SOLID'
-        : cfg.solidOverride === 'gpu'
-          ? 'solid after a GPU crash'
-          : ''
+      cfg.solidOverride === 'safe'
+        ? 'forced by safe mode'
+        : cfg.solidOverride === 'env'
+          ? 'forced by EMBER_SOLID'
+          : cfg.solidOverride === 'gpu'
+            ? 'solid after a GPU crash'
+            : ''
     );
+    const safeBanner = $('#safeBanner');
+    if (safeBanner) safeBanner.hidden = cfg.safeMode !== true;
     const themeContrast = contrast(cfg.theme);
     const warning = $('#contrastWarn');
     if (warning) {

@@ -195,6 +195,21 @@ describe('widget fixture rendering', () => {
     vi.useRealTimers();
   });
 
+  it('shows the safe-mode marker only while safe mode is on', () => {
+    const widget = createWidget({ root, now: () => 0, autoStart: false });
+    const badge = root.querySelector('.safe');
+    widget.render(IDLE, fixtureById('idle').settings);
+    expect(badge.hidden).toBe(true);
+
+    widget.applySettings({ safeMode: true, solid: true, solidOverride: 'safe' });
+    expect(badge.hidden).toBe(false);
+    expect(document.documentElement.classList.contains('solid')).toBe(true);
+
+    widget.applySettings({ safeMode: false });
+    expect(badge.hidden).toBe(true);
+    widget.destroy();
+  });
+
   it('sets the document title only when it owns the body', () => {
     const body = mountBody();
     const widget = createWidget({ root: body, now: () => 0, autoStart: false });

@@ -48,9 +48,16 @@ function errorCode(error) {
  *   the injected core schema module
  * @param {{ warn: Function, info: Function, error: Function }} [options.logger]
  * @param {number} [options.debounceMs]
+ * @param {'file' | 'memory'} [options.mode] `memory` never reads or writes the file
  */
-function createStore({ file, schema, logger = null, debounceMs = 250 }) {
-  let mode = 'file';
+function createStore({
+  file,
+  schema,
+  logger = null,
+  debounceMs = 250,
+  mode: initialMode = 'file',
+}) {
+  let mode = initialMode === 'memory' ? 'memory' : 'file';
   let recovered = false;
   let document = schema.normalize({}).value;
   let timer = null;
@@ -140,6 +147,8 @@ function createStore({ file, schema, logger = null, debounceMs = 250 }) {
   }
 
   function scheduleWrite() {
+    // A memory store is the safe-mode contract: nothing reaches the disk.
+    if (mode !== 'file') return;
     pendingWrite = true;
     if (timer !== null) return;
     timer = setTimeout(() => {
@@ -224,7 +233,7 @@ function createStore({ file, schema, logger = null, debounceMs = 250 }) {
     flush();
   }
 
-  read();
+  if (mode === 'file') read();
 
   return {
     get() {

@@ -18,6 +18,8 @@ const TEST_CHANNEL_NAMES = Object.freeze([
   'test:setCursor',
   'test:setDisplays',
   'test:suspend',
+  'test:trayCommand',
+  'test:trayInfo',
 ]);
 
 /**
@@ -42,7 +44,9 @@ function isEnabled(env = process.env) {
  *   suspend?: (ms: number) => any,
  *   setBounds?: (bounds: any) => any,
  *   setDisplays?: (displays: any) => any,
- *   setCursor?: (point: any) => any
+ *   setCursor?: (point: any) => any,
+ *   trayInfo?: () => any,
+ *   trayCommand?: (id: string) => boolean
  * }} deps
  */
 function createHandlers({
@@ -52,6 +56,8 @@ function createHandlers({
   setBounds = null,
   setDisplays = null,
   setCursor = null,
+  trayInfo = null,
+  trayCommand = null,
 }) {
   return {
     'test:setClock': (_event, iso) => {
@@ -103,6 +109,11 @@ function createHandlers({
       suspend(delta);
       return { ok: true, value: { now: new Date(clock.now()).toISOString(), awayMs: delta } };
     },
+    'test:trayInfo': () => ({ ok: true, value: trayInfo ? trayInfo() : null }),
+    'test:trayCommand': (_event, id) => {
+      if (!trayCommand) throw new Error('test:trayCommand is unavailable');
+      return { ok: true, value: trayCommand(String(id)) };
+    },
   };
 }
 
@@ -121,6 +132,8 @@ function registerTestChannel(ipcMain, name, handler) {
  *   setBounds?: (bounds: any) => any,
  *   setDisplays?: (displays: any) => any,
  *   setCursor?: (point: any) => any,
+ *   trayInfo?: () => any,
+ *   trayCommand?: (id: string) => boolean,
  *   env?: NodeJS.ProcessEnv
  * }} options
  * @returns {string[]} the channels registered, empty when test mode is off
@@ -133,10 +146,21 @@ function registerTestChannels({
   setBounds,
   setDisplays,
   setCursor,
+  trayInfo,
+  trayCommand,
   env = process.env,
 }) {
   if (!isEnabled(env)) return [];
-  const handlers = createHandlers({ clock, getWindow, suspend, setBounds, setDisplays, setCursor });
+  const handlers = createHandlers({
+    clock,
+    getWindow,
+    suspend,
+    setBounds,
+    setDisplays,
+    setCursor,
+    trayInfo,
+    trayCommand,
+  });
   for (const name of TEST_CHANNEL_NAMES) {
     registerTestChannel(ipcMain, name, handlers[name]);
   }

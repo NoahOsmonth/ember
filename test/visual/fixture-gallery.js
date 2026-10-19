@@ -14,7 +14,7 @@ const WIDGET_MARKUP = `
   <div id="app">
     <div class="time">
       <div class="digits" role="timer" aria-label="Time remaining" aria-live="off">25<span class="c">:</span>00</div>
-      <div class="meta"><span class="state">ready</span><span class="pips"></span></div>
+      <div class="meta"><span class="state">ready</span><span class="pips"></span><span class="safe" hidden>safe mode</span></div>
     </div>
     <div class="strip">
       <div class="bars"></div>

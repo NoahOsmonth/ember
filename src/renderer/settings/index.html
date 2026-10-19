@@ -74,6 +74,11 @@
   .s-theme .m i:nth-child(5n) { height: 100%; }
   .s-bg { display: flex; gap: 6px; }
   .s-warn { margin: 8px 0 4px; padding: 8px 10px; border-radius: 9px; border: 1px solid rgba(255,157,143,.45); background: rgba(255,122,107,.1); color: #ffb4aa; font-size: 12px; }
+  .s-safe { margin: 0 0 12px; padding: 10px 12px; border-radius: 10px; border: 1px solid rgba(255,196,120,.45); background: rgba(255,180,90,.1); color: #ffd6a3; font-size: 12px; line-height: 1.45; display: grid; gap: 7px; }
+  .s-safe[hidden] { display: none; }
+  .s-safe strong { font-size: 10.5px; letter-spacing: .09em; text-transform: uppercase; }
+  .s-safe code { font: 11.5px/1.3 "Cascadia Mono", "Consolas", ui-monospace, monospace; color: #fff; }
+  .s-safe .s-btn { justify-self: start; }
 
   .s-btn { border: 1px solid rgba(255,255,255,.14); background: none; border-radius: 9px; padding: 6px 12px; font-size: 12.5px; color: rgba(255,255,255,.85); }
   .s-btn:hover { background: rgba(255,255,255,.09); }
@@ -147,6 +152,11 @@
 
   <!-- SETTINGS -->
   <section class="s-page" id="pg-settings">
+    <div class="s-safe" id="safeBanner" hidden>
+      <strong>Safe mode</strong>
+      <span>Settings are not saved and global shortcuts are off. Quit Ember, then relaunch without <code>--safe-mode</code> or <code>EMBER_SAFE_MODE=1</code> to leave safe mode.</span>
+      <button class="s-btn" id="safeReset">Reset for this session</button>
+    </div>
     <div class="s-group">
       <h2>Timer</h2>
       <div class="s-chips" id="presets"></div>

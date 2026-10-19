@@ -114,6 +114,8 @@ describe('preload and registry agree in both directions', () => {
       'setCursor',
       'setDisplays',
       'suspend',
+      'trayCommand',
+      'trayInfo',
     ]);
   });
 });

@@ -108,6 +108,8 @@ function createApi(renderer) {
       setCursor: (point) => invoke('test:setCursor', point),
       setDisplays: (displays) => invoke('test:setDisplays', displays),
       suspend: (ms) => invoke('test:suspend', ms),
+      trayInfo: () => invoke('test:trayInfo'),
+      trayCommand: (id) => invoke('test:trayCommand', id),
     },
     onSettings: (callback) => on('settings', callback),
     onCommand: (callback) => on('command', callback),

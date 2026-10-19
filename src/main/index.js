@@ -6,6 +6,7 @@ const {
   globalShortcut,
   screen,
   powerMonitor,
+  shell,
 } = require('electron');
 const path = require('path');
 const fs = require('fs');
@@ -19,8 +20,8 @@ const { registerTestChannels } = require('./test-support');
 const { createTimerService } = require('./timer-service');
 const { createPowerWatcher } = require('./power');
 const { createShortcuts } = require('./shortcuts');
-const { createWidgetWindow } = require('./windows/widget-window');
-const { WEB_PREFERENCES, hardenWindow } = require('./security');
+const { createTray } = require('./tray');
+const { createWidgetWindow, createSettingsWindow, ensureReachable } = require('./windows');
 
 const PRESETS = {
   classic: { focus: 25, short: 5, long: 15 },
@@ -42,6 +43,13 @@ const DEFAULTS = {
   onTop: true,
   render: { background: 'auto' },
 };
+
+/**
+ * Safe mode is decided before anything is read or written: `--safe-mode` on the
+ * command line or `EMBER_SAFE_MODE=1` in the environment. It never persists.
+ */
+const SAFE_MODE = process.env.EMBER_SAFE_MODE === '1' || process.argv.includes('--safe-mode');
+const RECOVERY_MS = 5_000;
 
 /**
  * Point Electron at a throwaway profile when the app is launched by a test.
@@ -87,7 +95,10 @@ let timerService = null;
 let powerWatcher = null;
 let shortcuts = null;
 let widget = null;
-let win, settingsWin;
+let tray = null;
+let settingsWindow = null;
+let recoveryTimer = null;
+let win;
 
 // Support diagnosis switch: an opaque window regardless of the saved setting.
 const ENV_SOLID = process.env.EMBER_SOLID === '1';
@@ -97,18 +108,32 @@ let gpuSolid = false;
 /**
  * The background the widget should actually paint.
  *
- * The environment override wins over everything, then a GPU fallback that lasts
+ * Safe mode wins, then the environment override, then a GPU fallback that lasts
  * for the session, then the saved mode.
  */
 function effectiveSolid() {
-  return ENV_SOLID || gpuSolid || (state.render && state.render.background === 'solid');
+  return (
+    SAFE_MODE || ENV_SOLID || gpuSolid || (state.render && state.render.background === 'solid')
+  );
 }
 
 /** Why the background is forced opaque, if it is. */
 function solidOverride() {
+  if (SAFE_MODE) return 'safe';
   if (ENV_SOLID) return 'env';
   if (gpuSolid) return 'gpu';
   return null;
+}
+
+/**
+ * Risky settings that safe mode refuses to honour, whatever the caller sends.
+ * Changes still live in memory so the settings window behaves normally.
+ */
+function applySafeOverrides() {
+  if (!SAFE_MODE) return;
+  state.onTop = false;
+  state.mini = false;
+  state.render = { background: 'solid' };
 }
 
 /** Everything the settings document owns; `locked` is deliberately not persisted. */
@@ -159,13 +184,28 @@ async function initSettings() {
   const schemaUrl = pathToFileURL(path.join(__dirname, '../core/schema.js')).href;
   try {
     const schema = await import(schemaUrl);
-    logger = createLogger({ dir: app.getPath('logs') });
-    store = createStore({ file: stateFile(), schema, logger, debounceMs: 250 });
+    logger = createLogger({
+      dir: app.getPath('logs'),
+      level: SAFE_MODE ? 'debug' : undefined,
+    });
+    store = createStore({
+      file: stateFile(),
+      schema,
+      logger,
+      debounceMs: 250,
+      mode: SAFE_MODE ? 'memory' : 'file',
+    });
     state = { ...state, ...store.get() };
     state.locked = false; // never start click-through
+    applySafeOverrides();
     logger.info(
       `ember ${app.getVersion()} ready; settings mode=${store.mode} recovered=${store.recovered}`
     );
+    if (SAFE_MODE) {
+      logger.warn(
+        'safe mode active: defaults, opaque background, no always-on-top, no global shortcuts; settings are not saved'
+      );
+    }
   } catch (error) {
     store = null;
     logger.error(`settings unavailable (${error && error.message}); running on defaults`);
@@ -181,6 +221,7 @@ const publicState = () => {
     settingsRecovered: store ? store.recovered : false,
     solid: effectiveSolid(),
     solidOverride: solidOverride(),
+    safeMode: SAFE_MODE,
   };
 };
 function broadcast(except) {
@@ -194,6 +235,7 @@ function broadcastTimer(channel, payload) {
   for (const w of BrowserWindow.getAllWindows()) {
     if (!w.isDestroyed()) w.webContents.send(channel, payload);
   }
+  if (channel === 'timer:snapshot' && tray) tray.applySnapshot(payload);
 }
 
 /** Settings fields that the core timer reads. */
@@ -261,7 +303,7 @@ async function initShortcuts() {
       store,
       logger,
       onAction: shortcutAction,
-      safeMode: false,
+      safeMode: SAFE_MODE,
       globalShortcut,
     });
     const status = shortcuts.registerAll();
@@ -296,6 +338,7 @@ async function initWidget() {
     },
     preload: path.join(__dirname, '../preload/index.js'),
     page: path.join(__dirname, '../renderer/widget/index.html'),
+    safeMode: SAFE_MODE,
     logger,
     onReady: (window) => {
       window.webContents.send('settings', publicState());
@@ -315,12 +358,11 @@ async function initWidget() {
 /** Reassert the window level after unlock or a display change. */
 function reassertWindows() {
   if (win && !win.isDestroyed()) {
-    win.setAlwaysOnTop(state.onTop, 'screen-saver');
+    win.setAlwaysOnTop(!SAFE_MODE && state.onTop, 'screen-saver');
   }
   if (widget) widget.clamp();
-  if (settingsWin && !settingsWin.isDestroyed()) {
-    settingsWin.setAlwaysOnTop(true, 'screen-saver');
-  }
+  if (settingsWindow) settingsWindow.reassert();
+  if (tray) tray.ensure();
 }
 
 function setMini(mini) {
@@ -334,47 +376,117 @@ function setLocked(locked) {
 }
 
 function createWindow() {
-  if (widget) win = widget.create();
+  if (!widget) return;
+  win = widget.create();
+  // Explorer can restart and take the tray icon with it; showing the widget is
+  // one of the moments the icon is guaranteed to be wanted again.
+  if (win && typeof win.on === 'function') {
+    win.on('show', () => tray && tray.ensure());
+  }
+}
+
+/** Create the settings window owner before the widget can ask for it. */
+function initSettingsWindow() {
+  settingsWindow = createSettingsWindow({
+    screen,
+    getWidget: () => win,
+    preload: path.join(__dirname, '../preload/index.js'),
+    page: path.join(__dirname, '../renderer/settings/index.html'),
+    safeMode: SAFE_MODE,
+    onClosed: () => {},
+  });
 }
 
 function openSettings(tab = 'settings') {
-  if (settingsWin && !settingsWin.isDestroyed()) {
-    settingsWin.show();
-    settingsWin.focus();
-    settingsWin.webContents.send('tab', tab);
-    return;
+  if (!settingsWindow) return false;
+  settingsWindow.open(tab);
+  return true;
+}
+
+/**
+ * Move the widget into the work area of the display under the cursor.
+ * The cursor is read from the widget module so the test channel can place it.
+ */
+function bringToMe() {
+  if (!win || win.isDestroyed() || !widget) return null;
+  const display = widget.displayAt(widget.getCursor());
+  if (!display) return null;
+  const area = display.workArea;
+  const bounds = win.getBounds();
+  const width = Math.min(bounds.width, area.width);
+  const height = Math.min(bounds.height, area.height);
+  widget.setBounds({
+    x: Math.round(area.x + (area.width - width) / 2),
+    y: Math.round(area.y + (area.height - height) / 2),
+    width,
+    height,
+  });
+  win.show();
+  win.focus();
+  setLocked(false);
+  return win.getBounds();
+}
+
+/**
+ * Periodic reachability invariant: an off-screen widget is unreachable and no
+ * OS event is guaranteed to fire when it happens.
+ */
+function recover() {
+  if (!win || win.isDestroyed() || !widget) return [];
+  const proxy = {
+    isDestroyed: () => !win || win.isDestroyed(),
+    getBounds: () => win.getBounds(),
+    setBounds: (bounds) => widget.setBounds(bounds),
+  };
+  const moved = ensureReachable([proxy], widget.listDisplays());
+  if (moved.length > 0) {
+    logger.warn(`widget was off-screen; moved to ${moved[0].bounds.x},${moved[0].bounds.y}`);
   }
-  const bounds = win && !win.isDestroyed() ? win.getBounds() : null;
-  const area = bounds
-    ? screen.getDisplayMatching(bounds).workArea
-    : screen.getPrimaryDisplay().workArea;
-  const w = 460,
-    h = Math.min(640, area.height - 40);
-  settingsWin = new BrowserWindow({
-    width: w,
-    height: h,
-    x: Math.round(area.x + (area.width - w) / 2),
-    y: Math.round(area.y + (area.height - h) / 2),
-    frame: false,
-    transparent: true,
-    backgroundColor: '#00000000',
-    resizable: false,
-    maximizable: false,
-    minimizable: true,
-    fullscreenable: false,
-    hasShadow: false,
-    title: 'Ember settings',
-    webPreferences: {
-      ...WEB_PREFERENCES,
-      preload: path.join(__dirname, '../preload/index.js'),
-    },
-  });
-  hardenWindow(settingsWin, { file: path.join(__dirname, '../renderer/settings/index.html') });
-  settingsWin.setAlwaysOnTop(true, 'screen-saver');
-  settingsWin.loadFile('src/renderer/settings/index.html', { query: { tab } });
-  settingsWin.on('closed', () => {
-    settingsWin = null;
-  });
+  return moved;
+}
+
+function startRecovery() {
+  recoveryTimer = setInterval(recover, RECOVERY_MS);
+  if (typeof recoveryTimer.unref === 'function') recoveryTimer.unref();
+  screen.on('display-added', recover);
+  screen.on('display-removed', recover);
+  screen.on('display-metrics-changed', recover);
+}
+
+/** Show the widget, bringing it back on-screen first if it wandered off. */
+function showWidget() {
+  if (!win || win.isDestroyed()) return null;
+  recover();
+  win.show();
+  win.focus();
+  setLocked(false);
+  return win;
+}
+
+function initTray() {
+  try {
+    tray = createTray({
+      timer: timerService,
+      windows: { getWidget: () => win },
+      actions: {
+        showHide: () => {
+          if (!win || win.isDestroyed()) return;
+          if (win.isVisible()) win.hide();
+          else showWidget();
+        },
+        bringToMe,
+        toggle: () => timerService && timerService.toggle(),
+        skip: () => timerService && timerService.skip(),
+        settings: () => openSettings('settings'),
+        openLogs: () => shell.openPath(app.getPath('logs')),
+        quit: () => app.quit(),
+      },
+      logger,
+    });
+  } catch (error) {
+    tray = null;
+    logger.error(`tray unavailable (${error && error.message})`);
+  }
 }
 
 function showMenu() {
@@ -430,8 +542,9 @@ async function initIpc() {
       const previous = state;
       const { launch, ...rest } = patch;
       state = { ...state, ...rest };
+      applySafeOverrides();
       if ('onTop' in rest && win && !win.isDestroyed()) {
-        win.setAlwaysOnTop(!!rest.onTop, 'screen-saver');
+        win.setAlwaysOnTop(!SAFE_MODE && !!state.onTop, 'screen-saver');
       }
       if (launch !== undefined) app.setLoginItemSettings({ openAtLogin: !!launch });
       save();
@@ -443,7 +556,10 @@ async function initIpc() {
       const previous = state;
       const keepMini = state.mini;
       state = { ...state, ...DEFAULTS, locked: state.locked };
-      if (win && !win.isDestroyed()) win.setAlwaysOnTop(true, 'screen-saver');
+      applySafeOverrides();
+      if (win && !win.isDestroyed()) {
+        win.setAlwaysOnTop(!SAFE_MODE && state.onTop, 'screen-saver');
+      }
       save();
       if (timerSettingsChanged(previous, state)) timerService?.applySettings(state);
       if (keepMini !== state.mini) setMini(state.mini);
@@ -514,10 +630,8 @@ async function initIpc() {
 if (!app.requestSingleInstanceLock()) app.quit();
 else {
   app.on('second-instance', () => {
-    if (win) {
-      win.show();
-      setLocked(false);
-    }
+    // A second launch must never look like a crash: surface the running widget.
+    showWidget();
   });
   // A transparent window without a working GPU renders as a black box. Two
   // crashes in one session are enough evidence to stop trying; the decision is
@@ -538,9 +652,14 @@ else {
     await initSettings();
     await initTimer();
     await initShortcuts();
-    await initWidget();
+    initSettingsWindow();
+    // The first-run tutorial can open the settings window from the widget's
+    // ready handler, so the registry has to exist before the widget does.
     await initIpc();
+    await initWidget();
+    initTray();
     createWindow();
+    startRecovery();
     powerWatcher = createPowerWatcher({
       clock,
       timer: timerService,
@@ -558,9 +677,17 @@ else {
       setBounds: (bounds) => (widget ? widget.setBounds(bounds) : null),
       setDisplays: (displays) => (widget ? widget.setTestDisplays(displays) : null),
       setCursor: (point) => (widget ? widget.setTestCursor(point) : null),
+      trayInfo: () => (tray ? tray.describe() : null),
+      trayCommand: (id) => (tray ? tray.invoke(id) : false),
     });
   });
   app.on('before-quit', () => {
+    if (recoveryTimer !== null) {
+      clearInterval(recoveryTimer);
+      recoveryTimer = null;
+    }
+    if (tray) tray.dispose();
+    if (settingsWindow) settingsWindow.dispose();
     if (widget) widget.dispose();
     if (powerWatcher) powerWatcher.dispose();
     if (shortcuts) shortcuts.dispose();
@@ -568,6 +695,12 @@ else {
     if (store) store.flush();
   });
   app.on('will-quit', () => {
+    if (recoveryTimer !== null) {
+      clearInterval(recoveryTimer);
+      recoveryTimer = null;
+    }
+    if (tray) tray.dispose();
+    if (settingsWindow) settingsWindow.dispose();
     if (widget) widget.dispose();
     if (powerWatcher) powerWatcher.dispose();
     if (shortcuts) shortcuts.dispose();
@@ -576,6 +709,11 @@ else {
     globalShortcut.unregisterAll();
   });
   app.on('window-all-closed', () => {
+    if (recoveryTimer !== null) {
+      clearInterval(recoveryTimer);
+      recoveryTimer = null;
+    }
+    if (tray) tray.dispose();
     if (widget) widget.dispose();
     if (powerWatcher) powerWatcher.dispose();
     if (timerService) timerService.dispose();

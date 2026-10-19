@@ -119,6 +119,27 @@ describe('createHandlers', () => {
     expect(() => bare['test:setDisplays'](null, [])).toThrow(/unavailable/);
   });
 
+  it('reports and drives the tray through the injected adapter', () => {
+    const trayInfo = vi.fn(() => ({ tooltip: 'focus · 25:00', items: [] }));
+    const trayCommand = vi.fn(() => true);
+    const handlers = createHandlers({
+      clock: fakeClock(),
+      getWindow: () => null,
+      trayInfo,
+      trayCommand,
+    });
+    expect(handlers['test:trayInfo']()).toEqual({
+      ok: true,
+      value: { tooltip: 'focus · 25:00', items: [] },
+    });
+    expect(handlers['test:trayCommand'](null, 'toggle')).toEqual({ ok: true, value: true });
+    expect(trayCommand).toHaveBeenCalledWith('toggle');
+
+    const bare = createHandlers({ clock: fakeClock(), getWindow: () => null });
+    expect(bare['test:trayInfo']()).toEqual({ ok: true, value: null });
+    expect(() => bare['test:trayCommand'](null, 'toggle')).toThrow(/unavailable/);
+  });
+
   it('advances the clock and then drives the resume handler', () => {
     const clock = fakeClock();
     const suspend = vi.fn(() => ({ phase: 'short' }));

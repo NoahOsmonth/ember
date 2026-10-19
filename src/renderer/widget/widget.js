@@ -53,6 +53,7 @@ export function createWidget({
     note: pick('.note'),
     fuse: pick('.fuse'),
     announce: pick('.sr-only'),
+    safe: pick('.safe'),
     play: pick('.play'),
     skip: pick('.skip'),
     reset: pick('.reset'),
@@ -192,6 +193,7 @@ export function createWidget({
     setStyle(styleRoot, '--a', cfg.opacity);
 
     text(nodes.state, now() < flashUntil ? flashMsg : statusLabel(current, snap.phase));
+    if (nodes.safe) nodes.safe.hidden = cfg.safeMode !== true;
 
     const rounds = Math.max(0, Math.round(cfg.rounds));
     if (nodes.pips && nodes.pips.children.length !== rounds) {

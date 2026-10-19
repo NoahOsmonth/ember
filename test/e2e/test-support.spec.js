@@ -21,6 +21,8 @@ test('test mode registers exactly the channels the app owns', async ({ ember }) 
     'test:setCursor',
     'test:setDisplays',
     'test:suspend',
+    'test:trayCommand',
+    'test:trayInfo',
   ]);
 });
 

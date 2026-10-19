@@ -59,6 +59,21 @@ describe('createStore', () => {
     expect(store.recovered).toBe(false);
   });
 
+  it('stays in memory when asked, leaving the file byte-identical', () => {
+    const original = JSON.stringify({ ...schema.normalize({}).value, theme: 'mono' }, null, 2);
+    fs.writeFileSync(file, original);
+    const store = open({ mode: 'memory' });
+
+    expect(store.mode).toBe('memory');
+    expect(store.get().theme).toBe('dusk');
+    store.set('theme', 'solar');
+    store.set('opacity', 0.9);
+    expect(store.get().theme).toBe('solar');
+    expect(store.flush()).toBe(false);
+    expect(store.pending).toBe(false);
+    expect(fs.readFileSync(file, 'utf8')).toBe(original);
+  });
+
   it('validates every mutation before it reaches the disk', () => {
     const store = open();
     store.set({ opacity: 4, theme: 'neon', durations: { focus: 40 } });

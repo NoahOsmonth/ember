@@ -231,6 +231,34 @@ describe('settings renderer', () => {
     expect($id('bgNote').textContent).toBe('forced by EMBER_SOLID');
   });
 
+  it('explains safe mode and offers a reset for the session', async () => {
+    mountPage();
+    const safeApi = fakeApi();
+    safeApi.state.get = async () =>
+      ok({ ...C.DEFAULTS, launch: false, safeMode: true, solid: true, solidOverride: 'safe' });
+    safeApi.shortcuts.get = async () =>
+      ok({
+        safeMode: true,
+        bindings: shortcutBindings({
+          showHide: { status: 'disabled', message: 'safe mode is active' },
+        }),
+      });
+    createSettings({ api: safeApi });
+    await flush();
+
+    expect($id('safeBanner').hidden).toBe(false);
+    expect($id('safeBanner').textContent).toContain('--safe-mode');
+    expect($id('safeBanner').textContent).toContain('EMBER_SAFE_MODE=1');
+    expect($id('bgNote').textContent).toBe('forced by safe mode');
+    expect($sel('[data-shortcut-id="showHide"] .s-shortcut-status').textContent).toBe(
+      STRINGS.shortcuts.disabled
+    );
+
+    $id('safeReset').click();
+    await flush();
+    expect(safeApi.calls.some((call) => call.name === 'state.reset')).toBe(true);
+  });
+
   it('warns when a theme falls below the contrast floor', async () => {
     mountPage();
     createSettings({

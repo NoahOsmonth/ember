@@ -6,6 +6,8 @@ files:
   - src/preload/**
   - src/renderer/**
   - src/core/**
+  - build/trayTemplate.png
 
 win:
   target: portable
+  icon: build/icon.ico

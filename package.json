@@ -16,7 +16,8 @@
     "test:visual": "playwright test --project=visual",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "dist": "electron-builder --win portable",
+    "icons": "node scripts/generate-icons.js",
+    "dist": "node scripts/check-assets.js && electron-builder --win portable",
     "prepare": "simple-git-hooks"
   },
   "engines": {
