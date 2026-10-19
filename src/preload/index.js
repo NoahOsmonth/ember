@@ -110,6 +110,7 @@ function createApi(renderer) {
       suspend: (ms) => invoke('test:suspend', ms),
       trayInfo: () => invoke('test:trayInfo'),
       trayCommand: (id) => invoke('test:trayCommand', id),
+      notifications: () => invoke('test:notifications'),
     },
     onSettings: (callback) => on('settings', callback),
     onCommand: (callback) => on('command', callback),

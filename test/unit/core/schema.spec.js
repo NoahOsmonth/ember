@@ -243,6 +243,69 @@ describe('shortcut bindings', () => {
   });
 });
 
+describe('quiet hours and do not disturb', () => {
+  it('defaults to a disabled overnight window and DND off', () => {
+    expect(defaults.quietHours).toEqual({ enabled: false, start: '22:00', end: '07:00' });
+    expect(defaults.doNotDisturb).toBe(false);
+    expect(normalize({}).value).toMatchObject({
+      doNotDisturb: false,
+      quietHours: { enabled: false, start: '22:00', end: '07:00' },
+    });
+  });
+
+  it('accepts a full window and canonicalizes the padding', () => {
+    const { value, issues } = normalize({
+      doNotDisturb: true,
+      quietHours: { enabled: true, start: '7:05', end: '23:30' },
+    });
+    expect(issues).toEqual([]);
+    expect(value.doNotDisturb).toBe(true);
+    expect(value.quietHours).toEqual({ enabled: true, start: '07:05', end: '23:30' });
+  });
+
+  it('keeps omitted fields at their defaults', () => {
+    const { value, issues } = normalize({ quietHours: { enabled: true } });
+    expect(issues).toEqual([]);
+    expect(value.quietHours).toEqual({ enabled: true, start: '22:00', end: '07:00' });
+  });
+
+  it('rejects an invalid time and falls back to the default for that field', () => {
+    const { value, issues } = normalize({
+      quietHours: { enabled: true, start: '25:00', end: '07:00' },
+    });
+    expect(value.quietHours).toEqual({ enabled: true, start: '22:00', end: '07:00' });
+    expect(issues).toEqual([
+      expect.objectContaining({ path: 'quietHours.start', code: 'invalid-type' }),
+    ]);
+  });
+
+  it('rejects a non-object block, a non-boolean flag and unknown keys', () => {
+    const wrong = normalize({ quietHours: 'night' });
+    expect(wrong.value.quietHours).toEqual(clone(defaults.quietHours));
+    expect(wrong.issues[0]).toMatchObject({ path: 'quietHours', code: 'invalid-type' });
+
+    const flag = normalize({ quietHours: { enabled: 'yes' } });
+    expect(flag.value.quietHours.enabled).toBe(false);
+    expect(flag.issues[0]).toMatchObject({
+      path: 'quietHours.enabled',
+      code: 'invalid-type',
+    });
+
+    const unknown = normalize({ quietHours: { enabled: true, snooze: 5 } });
+    expect(unknown.issues).toEqual([
+      expect.objectContaining({ path: 'quietHours.snooze', code: 'unknown-key' }),
+    ]);
+  });
+
+  it('keeps doNotDisturb only when it is a boolean', () => {
+    const { value, issues } = normalize({ doNotDisturb: 'yes' });
+    expect(value.doNotDisturb).toBe(false);
+    expect(issues).toEqual([
+      expect.objectContaining({ path: 'doNotDisturb', code: 'invalid-type' }),
+    ]);
+  });
+});
+
 describe('migration from version 0', () => {
   it('is the only registered migration and lands on the current version', () => {
     expect(migrations.map((entry) => [entry.from, entry.to])).toEqual([[0, CURRENT_VERSION]]);

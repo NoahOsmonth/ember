@@ -16,6 +16,7 @@ async function registeredTestChannels(app) {
 test('test mode registers exactly the channels the app owns', async ({ ember }) => {
   expect(await registeredTestChannels(ember.app)).toEqual([
     'test:advanceClock',
+    'test:notifications',
     'test:setBounds',
     'test:setClock',
     'test:setCursor',

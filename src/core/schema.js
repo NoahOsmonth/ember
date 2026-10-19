@@ -8,6 +8,7 @@
 
 import { themeNames } from './themes.js';
 import { canonicalAccelerator } from './accelerators.js';
+import { normalizeClockTime } from './quiet-hours.js';
 
 /** Schema version written by this build. */
 export const CURRENT_VERSION = 1;
@@ -41,6 +42,8 @@ export const defaults = Object.freeze({
   sound: true,
   volume: 0.6,
   notify: true,
+  doNotDisturb: false,
+  quietHours: Object.freeze({ enabled: false, start: '22:00', end: '07:00' }),
   theme: 'dusk',
   opacity: 0.62,
   mini: false,
@@ -61,6 +64,7 @@ const BOOLEAN_PATHS = [
   'autoFocus',
   'sound',
   'notify',
+  'doNotDisturb',
   'mini',
   'onTop',
   'tutorialSeen',
@@ -244,6 +248,32 @@ export function normalize(raw) {
       for (const key of Object.keys(doc.render)) {
         if (key !== 'background') {
           issues.push(issue(`render.${key}`, 'unknown-key', 'key is not part of the schema'));
+        }
+      }
+    }
+  }
+
+  if (doc.quietHours !== undefined) {
+    if (!isPlainObject(doc.quietHours)) {
+      issues.push(issue('quietHours', 'invalid-type', 'expected an object'));
+    } else {
+      const raw = doc.quietHours;
+      if (raw.enabled !== undefined) {
+        if (typeof raw.enabled === 'boolean') value.quietHours.enabled = raw.enabled;
+        else issues.push(issue('quietHours.enabled', 'invalid-type', 'expected a boolean'));
+      }
+      for (const key of ['start', 'end']) {
+        if (raw[key] === undefined) continue;
+        const time = normalizeClockTime(raw[key]);
+        if (time === null) {
+          issues.push(issue(`quietHours.${key}`, 'invalid-type', 'expected HH:MM'));
+        } else {
+          value.quietHours[key] = time;
+        }
+      }
+      for (const key of Object.keys(raw)) {
+        if (!['enabled', 'start', 'end'].includes(key)) {
+          issues.push(issue(`quietHours.${key}`, 'unknown-key', 'key is not part of the schema'));
         }
       }
     }

@@ -20,6 +20,7 @@ const TEST_CHANNEL_NAMES = Object.freeze([
   'test:suspend',
   'test:trayCommand',
   'test:trayInfo',
+  'test:notifications',
 ]);
 
 /**
@@ -46,7 +47,8 @@ function isEnabled(env = process.env) {
  *   setDisplays?: (displays: any) => any,
  *   setCursor?: (point: any) => any,
  *   trayInfo?: () => any,
- *   trayCommand?: (id: string) => boolean
+ *   trayCommand?: (id: string) => boolean,
+ *   notifications?: () => any
  * }} deps
  */
 function createHandlers({
@@ -58,6 +60,7 @@ function createHandlers({
   setCursor = null,
   trayInfo = null,
   trayCommand = null,
+  notifications = null,
 }) {
   return {
     'test:setClock': (_event, iso) => {
@@ -114,6 +117,7 @@ function createHandlers({
       if (!trayCommand) throw new Error('test:trayCommand is unavailable');
       return { ok: true, value: trayCommand(String(id)) };
     },
+    'test:notifications': () => ({ ok: true, value: notifications ? notifications() : null }),
   };
 }
 
@@ -134,6 +138,7 @@ function registerTestChannel(ipcMain, name, handler) {
  *   setCursor?: (point: any) => any,
  *   trayInfo?: () => any,
  *   trayCommand?: (id: string) => boolean,
+ *   notifications?: () => any,
  *   env?: NodeJS.ProcessEnv
  * }} options
  * @returns {string[]} the channels registered, empty when test mode is off
@@ -148,6 +153,7 @@ function registerTestChannels({
   setCursor,
   trayInfo,
   trayCommand,
+  notifications,
   env = process.env,
 }) {
   if (!isEnabled(env)) return [];
@@ -160,6 +166,7 @@ function registerTestChannels({
     setCursor,
     trayInfo,
     trayCommand,
+    notifications,
   });
   for (const name of TEST_CHANNEL_NAMES) {
     registerTestChannel(ipcMain, name, handlers[name]);

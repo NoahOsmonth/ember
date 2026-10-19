@@ -25,6 +25,17 @@ function channelSpecs(v) {
     sound: v.optional(v.boolean()),
     volume: v.optional(v.number({ min: 0, max: 1 })),
     notify: v.optional(v.boolean()),
+    doNotDisturb: v.optional(v.boolean()),
+    quietHours: v.optional(
+      v.object(
+        {
+          enabled: v.boolean(),
+          start: v.string({ minLength: 4, maxLength: 5 }),
+          end: v.string({ minLength: 4, maxLength: 5 }),
+        },
+        { strict: true }
+      )
+    ),
     theme: v.optional(v.enum(['dusk', 'tide', 'solar', 'mono'])),
     opacity: v.optional(v.number({ min: 0.12, max: 0.96 })),
     mini: v.optional(v.boolean()),

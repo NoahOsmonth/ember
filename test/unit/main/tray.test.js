@@ -46,13 +46,20 @@ const running = { phase: 'focus', status: 'running', remainingMs: 12.5 * 60_000 
 const paused = { phase: 'short', status: 'paused', remainingMs: 4 * 60_000 };
 const idle = { phase: 'long', status: 'idle', remainingMs: 15 * 60_000 };
 
-function setup({ snapshot = running, widget = fakeWidget(), actions = {}, image = {} } = {}) {
+function setup({
+  snapshot = running,
+  widget = fakeWidget(),
+  actions = {},
+  settings = () => ({}),
+  image = {},
+} = {}) {
   const created = [];
   const timer = { get: () => snapshot };
   const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
   const tray = createTray({
     timer,
     windows: { getWidget: () => widget },
+    settings,
     actions,
     iconPath: 'icon.png',
     logger,
@@ -138,10 +145,20 @@ describe('createTray', () => {
       'bring',
       'toggle',
       'skip',
+      'dnd',
       'settings',
       'logs',
       'quit',
     ]);
+  });
+
+  it('shows the do-not-disturb state as a checked item', () => {
+    const { tray } = make({ settings: () => ({ doNotDisturb: true }) });
+    const item = tray.describe().items.find((entry) => entry.id === 'dnd');
+    expect(item).toMatchObject({ label: 'Do not disturb', checked: true });
+
+    const off = make();
+    expect(off.tray.describe().items.find((entry) => entry.id === 'dnd').checked).toBe(false);
   });
 
   it('routes menu commands to the actions', () => {
@@ -150,19 +167,21 @@ describe('createTray', () => {
       bringToMe: vi.fn(),
       toggle: vi.fn(),
       skip: vi.fn(),
+      toggleDnd: vi.fn(),
       settings: vi.fn(),
       openLogs: vi.fn(),
       quit: vi.fn(),
     };
     const { tray } = make({ actions });
 
-    for (const id of ['showHide', 'bring', 'toggle', 'skip', 'settings', 'logs', 'quit']) {
+    for (const id of ['showHide', 'bring', 'toggle', 'skip', 'dnd', 'settings', 'logs', 'quit']) {
       expect(tray.invoke(id)).toBe(true);
     }
     expect(actions.showHide).toHaveBeenCalledOnce();
     expect(actions.bringToMe).toHaveBeenCalledOnce();
     expect(actions.toggle).toHaveBeenCalledOnce();
     expect(actions.skip).toHaveBeenCalledOnce();
+    expect(actions.toggleDnd).toHaveBeenCalledOnce();
     expect(actions.settings).toHaveBeenCalledOnce();
     expect(actions.openLogs).toHaveBeenCalledOnce();
     expect(actions.quit).toHaveBeenCalledOnce();
@@ -192,6 +211,7 @@ describe('createTray', () => {
       'bring',
       'toggle',
       'skip',
+      'dnd',
       'settings',
       'logs',
       'quit',

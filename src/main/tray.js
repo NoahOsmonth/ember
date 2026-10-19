@@ -48,6 +48,7 @@ function formatTooltip(snapshot) {
  * @param {object} options
  * @param {{ get?: () => any } | null} [options.timer]
  * @param {{ getWidget?: () => any }} [options.windows]
+ * @param {() => any} [options.settings] the live settings document
  * @param {Record<string, Function>} [options.actions]
  * @param {string} [options.iconPath] absolute path of the tray image
  * @param {any} [options.logger]
@@ -59,6 +60,7 @@ function formatTooltip(snapshot) {
 function createTray({
   timer = null,
   windows = {},
+  settings = () => ({}),
   actions = {},
   iconPath = path.join(__dirname, '../../build/trayTemplate.png'),
   logger = null,
@@ -108,6 +110,14 @@ function createTray({
         click: () => actions.toggle && actions.toggle(),
       },
       { id: 'skip', label: 'Skip', click: () => actions.skip && actions.skip() },
+      { type: 'separator' },
+      {
+        id: 'dnd',
+        label: 'Do not disturb',
+        type: 'checkbox',
+        checked: !!(settings() || {}).doNotDisturb,
+        click: () => actions.toggleDnd && actions.toggleDnd(),
+      },
       { type: 'separator' },
       {
         id: 'settings',
@@ -184,7 +194,11 @@ function createTray({
       tooltip: formatTooltip(snapshot),
       items: menuTemplate()
         .filter((item) => item.id)
-        .map((item) => ({ id: item.id, label: item.label })),
+        .map((item) => ({
+          id: item.id,
+          label: item.label,
+          ...(item.type === 'checkbox' ? { checked: !!item.checked } : {}),
+        })),
     };
   }
 

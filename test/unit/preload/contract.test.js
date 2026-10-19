@@ -109,6 +109,7 @@ describe('preload and registry agree in both directions', () => {
   it('exposes the test channels explicitly, outside the contract namespaces', () => {
     expect(Object.keys(api.test).sort()).toEqual([
       'advanceClock',
+      'notifications',
       'setBounds',
       'setClock',
       'setCursor',

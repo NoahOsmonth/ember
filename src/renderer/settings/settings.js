@@ -130,6 +130,17 @@ export function createSettings({
     paint();
   }
 
+  /** Read a dotted path such as `quietHours.enabled` from the live document. */
+  const readPath = (path) =>
+    path.split('.').reduce((acc, key) => (acc == null ? undefined : acc[key]), cfg);
+
+  /** Write a dotted path, copying the parent so the change stays immutable. */
+  function writePath(path, value) {
+    const [head, tail] = path.split('.');
+    if (!tail) set({ [head]: value });
+    else set({ [head]: { ...(cfg[head] || {}), [tail]: value } });
+  }
+
   // presets
   const presetsEl = $('#presets');
   Object.entries(C.PRESETS).forEach(([id, preset]) => {
@@ -202,13 +213,21 @@ export function createSettings({
   // switches
   $$('.s-sw').forEach((sw) =>
     on(sw, 'click', () => {
-      const key = sw.dataset.key || '';
-      const value = !cfg[key];
-      if (key === 'mini') {
+      const path = sw.dataset.path || sw.dataset.key || '';
+      const value = !readPath(path);
+      if (path === 'mini') {
         cfg.mini = value;
         call(api.win.mini, value);
         paint();
-      } else set({ [key]: value });
+      } else writePath(path, value);
+    })
+  );
+
+  // quiet-hours clock fields
+  $$('.s-time').forEach((input) =>
+    on(input, 'change', () => {
+      if (!input.value) return;
+      set({ quietHours: { ...(cfg.quietHours || {}), [input.dataset.qh]: input.value } });
     })
   );
 
@@ -273,8 +292,12 @@ export function createSettings({
       if (document.activeElement !== input) input.value = value;
     });
     $$('.s-sw').forEach((sw) =>
-      sw.setAttribute('aria-checked', String(!!cfg[sw.dataset.key || '']))
+      sw.setAttribute('aria-checked', String(!!readPath(sw.dataset.path || sw.dataset.key || '')))
     );
+    $$('.s-time').forEach((input) => {
+      const value = (cfg.quietHours || {})[input.dataset.qh] || '';
+      if (document.activeElement !== input) input.value = value;
+    });
     $$('input[type="range"]').forEach((range) => {
       const key = range.dataset.key || '';
       const value = Math.round(cfg[key] * 100);

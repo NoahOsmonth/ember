@@ -54,6 +54,7 @@ export function createWidget({
     fuse: pick('.fuse'),
     announce: pick('.sr-only'),
     safe: pick('.safe'),
+    dnd: pick('.dnd'),
     play: pick('.play'),
     skip: pick('.skip'),
     reset: pick('.reset'),
@@ -142,18 +143,6 @@ export function createWidget({
     lastFuse = null;
   }
 
-  function notify(was) {
-    if (!cfg.notify) return;
-    try {
-      new Notification(was === 'focus' ? STRINGS.focusDoneTitle : STRINGS.breakOverTitle, {
-        body: was === 'focus' ? STRINGS.focusDoneBody : STRINGS.breakOverBody,
-        silent: true,
-      });
-    } catch {
-      /* a missing notification service must never break the timer */
-    }
-  }
-
   function flash(message, ms = 1400) {
     flashUntil = now() + ms;
     flashMsg = message;
@@ -187,13 +176,15 @@ export function createWidget({
       (global ? '' : 'fixture ') +
       (cfg.mini ? 'mini ' : '') +
       current +
-      (cfg.locked ? ' locked' : '')
+      (cfg.locked ? ' locked' : '') +
+      (cfg.doNotDisturb ? ' dnd' : '')
     ).trim();
     if (doc.documentElement) doc.documentElement.classList.toggle('solid', cfg.solid === true);
     setStyle(styleRoot, '--a', cfg.opacity);
 
     text(nodes.state, now() < flashUntil ? flashMsg : statusLabel(current, snap.phase));
     if (nodes.safe) nodes.safe.hidden = cfg.safeMode !== true;
+    if (nodes.dnd) nodes.dnd.hidden = cfg.doNotDisturb !== true;
 
     const rounds = Math.max(0, Math.round(cfg.rounds));
     if (nodes.pips && nodes.pips.children.length !== rounds) {
@@ -433,9 +424,12 @@ export function createWidget({
     cleanups.push(
       api.timer.onPhaseComplete((event) => {
         if (!event) return;
-        // A phase completed while the machine was away is reported, not chimed.
-        if (!event.quiet && cfg.sound) chime(event.completedPhase, cfg.volume);
-        notify(event.completedPhase);
+        // The main process decides both signals once, so the toast and the
+        // chime cannot disagree; older payloads fall back to the local rule.
+        const chimeAllowed = event.signals
+          ? event.signals.chime === true
+          : !event.quiet && cfg.sound;
+        if (chimeAllowed) chime(event.completedPhase, cfg.volume);
       })
     );
     cleanups.push(

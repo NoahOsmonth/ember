@@ -140,6 +140,21 @@ describe('createHandlers', () => {
     expect(() => bare['test:trayCommand'](null, 'toggle')).toThrow(/unavailable/);
   });
 
+  it('reports the notifier history through the injected adapter', () => {
+    const notifications = vi.fn(() => ({ count: 2, last: { title: 'Break over' }, history: [] }));
+    const handlers = createHandlers({
+      clock: fakeClock(),
+      getWindow: () => null,
+      notifications,
+    });
+    expect(handlers['test:notifications']()).toEqual({
+      ok: true,
+      value: { count: 2, last: { title: 'Break over' }, history: [] },
+    });
+    const bare = createHandlers({ clock: fakeClock(), getWindow: () => null });
+    expect(bare['test:notifications']()).toEqual({ ok: true, value: null });
+  });
+
   it('advances the clock and then drives the resume handler', () => {
     const clock = fakeClock();
     const suspend = vi.fn(() => ({ phase: 'short' }));

@@ -21,6 +21,8 @@ const { createTimerService } = require('./timer-service');
 const { createPowerWatcher } = require('./power');
 const { createShortcuts } = require('./shortcuts');
 const { createTray } = require('./tray');
+const { createNotifier } = require('./notifications');
+const { applyAppUserModelId } = require('./identity');
 const { createWidgetWindow, createSettingsWindow, ensureReachable } = require('./windows');
 
 const PRESETS = {
@@ -37,6 +39,8 @@ const DEFAULTS = {
   sound: true,
   volume: 0.6,
   notify: true,
+  doNotDisturb: false,
+  quietHours: { enabled: false, start: '22:00', end: '07:00' },
   theme: 'dusk',
   opacity: 0.62,
   mini: false,
@@ -84,6 +88,10 @@ function configureTestProfile() {
 
 configureTestProfile();
 
+// The shell needs the identity before the first window exists. It is applied
+// again in `whenReady` so a relaunch after an update reasserts it.
+applyAppUserModelId(app);
+
 const stateFile = () => path.join(app.getPath('userData'), 'ember.json');
 // One clock for the main process; the test channel moves its offset instead of
 // introducing a parallel time path. The timer service will consume this clock.
@@ -97,6 +105,7 @@ let shortcuts = null;
 let widget = null;
 let tray = null;
 let settingsWindow = null;
+let notifier = null;
 let recoveryTimer = null;
 let win;
 
@@ -249,6 +258,27 @@ function timerSettingsChanged(previous, next) {
 }
 
 /**
+ * Construct the notifier before the timer: restoring a persisted running phase
+ * can complete one during startup, and that completion still needs its one
+ * signal decision.
+ */
+async function initNotifications() {
+  try {
+    notifier = await createNotifier({
+      settings: () => state,
+      logger,
+      focusWidget: showWidget,
+      isFocused: () => !!(win && !win.isDestroyed() && win.isFocused()),
+      now: () => new Date(clock.now()),
+    });
+    logger.info('notifications ready');
+  } catch (error) {
+    notifier = null;
+    logger.error(`notifications unavailable (${error && error.message})`);
+  }
+}
+
+/**
  * Construct the one timer owner after the store and before the first window.
  * The service restores the persisted snapshot itself and queues a missed-phase
  * notice for the widget's first subscribe.
@@ -265,7 +295,16 @@ async function initTimer() {
       clock,
       broadcast: broadcastTimer,
       logger,
-      onPhaseComplete: (event) => broadcastTimer('timer:phase-complete', event),
+      onPhaseComplete: (event) => {
+        // One predicate decides both signals. The renderer gets the same
+        // decision it would have made, so a toast and a chime cannot disagree.
+        const signals = notifier
+          ? event.quiet
+            ? notifier.notifyMissed(event)
+            : notifier.notifyPhaseComplete(event)
+          : { toast: false, chime: false };
+        broadcastTimer('timer:phase-complete', { ...event, signals });
+      },
     });
     logger.info('timer service ready');
   } catch (error) {
@@ -375,6 +414,14 @@ function setLocked(locked) {
   broadcast();
 }
 
+/** The immediate silence switch shared by the tray, the widget menu and settings. */
+function setDoNotDisturb(value) {
+  state = /** @type {any} */ ({ ...state, doNotDisturb: !!value });
+  save();
+  broadcast();
+  logger.info(`do not disturb ${value ? 'on' : 'off'}`);
+}
+
 function createWindow() {
   if (!widget) return;
   win = widget.create();
@@ -468,6 +515,7 @@ function initTray() {
     tray = createTray({
       timer: timerService,
       windows: { getWidget: () => win },
+      settings: () => state,
       actions: {
         showHide: () => {
           if (!win || win.isDestroyed()) return;
@@ -477,6 +525,7 @@ function initTray() {
         bringToMe,
         toggle: () => timerService && timerService.toggle(),
         skip: () => timerService && timerService.skip(),
+        toggleDnd: () => setDoNotDisturb(!state.doNotDisturb),
         settings: () => openSettings('settings'),
         openLogs: () => shell.openPath(app.getPath('logs')),
         quit: () => app.quit(),
@@ -514,6 +563,12 @@ function showMenu() {
       type: 'checkbox',
       checked: state.mini,
       click: (m) => setMini(m.checked),
+    },
+    {
+      label: 'Do not disturb',
+      type: 'checkbox',
+      checked: !!state.doNotDisturb,
+      click: (m) => setDoNotDisturb(m.checked),
     },
     { label: 'Click-through   Ctrl+Alt+L', click: () => setLocked(true) },
     { type: 'separator' },
@@ -649,7 +704,9 @@ else {
     broadcast();
   });
   app.whenReady().then(async () => {
+    applyAppUserModelId(app);
     await initSettings();
+    await initNotifications();
     await initTimer();
     await initShortcuts();
     initSettingsWindow();
@@ -679,6 +736,7 @@ else {
       setCursor: (point) => (widget ? widget.setTestCursor(point) : null),
       trayInfo: () => (tray ? tray.describe() : null),
       trayCommand: (id) => (tray ? tray.invoke(id) : false),
+      notifications: () => (notifier ? notifier.describe() : null),
     });
   });
   app.on('before-quit', () => {
@@ -692,6 +750,7 @@ else {
     if (powerWatcher) powerWatcher.dispose();
     if (shortcuts) shortcuts.dispose();
     if (timerService) timerService.dispose();
+    if (notifier) notifier.dispose();
     if (store) store.flush();
   });
   app.on('will-quit', () => {
@@ -705,6 +764,7 @@ else {
     if (powerWatcher) powerWatcher.dispose();
     if (shortcuts) shortcuts.dispose();
     if (timerService) timerService.dispose();
+    if (notifier) notifier.dispose();
     if (store) store.flush();
     globalShortcut.unregisterAll();
   });
