@@ -154,6 +154,37 @@ describe('migration from version 0', () => {
   });
 });
 
+describe('timer snapshot', () => {
+  const snapshot = {
+    phase: 'focus',
+    status: 'running',
+    remainingMs: 900_000,
+    durationMs: 1_500_000,
+    endsAtWall: 1_700_000_000_000,
+    rounds: 2,
+    settingsRevision: 3,
+  };
+
+  it('keeps a persisted snapshot intact', () => {
+    const { value, issues } = normalize({ ...clone(defaults), timer: snapshot });
+    expect(issues).toEqual([]);
+    expect(value.timer).toEqual(snapshot);
+  });
+
+  it('defaults to no snapshot and rejects a non-object', () => {
+    expect(normalize({}).value.timer).toBeNull();
+    const { value, issues } = normalize({ ...clone(defaults), timer: 'later' });
+    expect(value.timer).toBeNull();
+    expect(issues).toEqual([expect.objectContaining({ path: 'timer', code: 'invalid-type' })]);
+  });
+
+  it('does not hand out the stored object itself', () => {
+    const { value } = normalize({ ...clone(defaults), timer: snapshot });
+    value.timer.remainingMs = 1;
+    expect(snapshot.remainingMs).toBe(900_000);
+  });
+});
+
 describe('normalize never throws', () => {
   it('handles non-object inputs by returning defaults', () => {
     for (const input of [null, undefined, 0, 'text', [], true, () => {}]) {

@@ -16,11 +16,11 @@ const FIRST_SNAPSHOT_TIMEOUT = 20_000;
  * is then supplied through Chromium's `--user-data-dir` switch, so even that
  * launch cannot touch the developer's real profile.
  *
- * @param {{ testMode?: boolean, env?: Record<string, string> }} [options]
+ * @param {{ testMode?: boolean, env?: Record<string, string>, userDataDir?: string }} [options]
  * @returns {Promise<{ app: any, page: any, userDataDir: string, close: (options?: { keep?: boolean }) => Promise<void>, attach: (testInfo: any) => Promise<void> }>}
  */
-async function launchEmber({ testMode = true, env = {} } = {}) {
-  const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ember-e2e-'));
+async function launchEmber({ testMode = true, env = {}, userDataDir: providedDir } = {}) {
+  const userDataDir = providedDir || fs.mkdtempSync(path.join(os.tmpdir(), 'ember-e2e-'));
   const baseEnv = { ...process.env };
   delete baseEnv.EMBER_TEST;
   delete baseEnv.EMBER_USER_DATA;

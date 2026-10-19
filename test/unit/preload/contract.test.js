@@ -12,6 +12,7 @@ const { channelSpecs } = channelsModule;
 const invoke = vi.fn();
 const send = vi.fn();
 const on = vi.fn();
+const removeListener = vi.fn();
 
 /**
  * Evaluate the real preload source with a fake `electron`. The preload is a
@@ -31,7 +32,7 @@ vm.runInNewContext(
             exposed[name] = value;
           },
         },
-        ipcRenderer: { invoke, send, on },
+        ipcRenderer: { invoke, send, on, removeListener },
       };
     },
     module: { exports: {} },
@@ -64,7 +65,9 @@ function exposedChannels(surface) {
     if (namespace === 'test' || namespace.startsWith('on')) continue;
     if (!value || typeof value !== 'object') continue;
     for (const [action, fn] of Object.entries(value)) {
-      if (typeof fn === 'function') channels.set(`${namespace}:${action}`, fn);
+      if (typeof fn === 'function' && !action.startsWith('on')) {
+        channels.set(`${namespace}:${action}`, fn);
+      }
     }
   }
   return channels;
@@ -74,6 +77,7 @@ beforeEach(() => {
   invoke.mockReset();
   send.mockReset();
   on.mockReset();
+  removeListener.mockReset();
   invoke.mockResolvedValue({ ok: true, value: undefined });
 });
 
@@ -143,6 +147,37 @@ describe('preload forwards to the right channel', () => {
       method: 'invoke',
       args: ['settings:open', { tab: 'tutorial' }],
     },
+    'timer:get': { call: () => api.timer.get(), method: 'invoke', args: ['timer:get', undefined] },
+    'timer:start': {
+      call: () => api.timer.start(),
+      method: 'invoke',
+      args: ['timer:start', undefined],
+    },
+    'timer:pause': {
+      call: () => api.timer.pause(),
+      method: 'invoke',
+      args: ['timer:pause', undefined],
+    },
+    'timer:toggle': {
+      call: () => api.timer.toggle(),
+      method: 'invoke',
+      args: ['timer:toggle', undefined],
+    },
+    'timer:skip': {
+      call: () => api.timer.skip(),
+      method: 'invoke',
+      args: ['timer:skip', undefined],
+    },
+    'timer:reset': {
+      call: () => api.timer.reset(),
+      method: 'invoke',
+      args: ['timer:reset', undefined],
+    },
+    'timer:subscribe': {
+      call: () => api.timer.subscribe(),
+      method: 'invoke',
+      args: ['timer:subscribe', undefined],
+    },
   };
 
   it('covers every registry channel', () => {
@@ -183,5 +218,33 @@ describe('preload envelope handling', () => {
 
   it('keeps the surface free of a generic channel-name invoke', () => {
     expect(preloadSource).not.toMatch(/return\s*\{[^}]*\binvoke\s*:/s);
+  });
+});
+
+describe('preload event subscriptions', () => {
+  it('forwards timer snapshots and returns an unsubscribe function', () => {
+    const callback = vi.fn();
+    const unsubscribe = api.timer.onSnapshot(callback);
+    expect(on).toHaveBeenCalledWith('timer:snapshot', expect.any(Function));
+
+    const listener = on.mock.calls.at(-1)[1];
+    listener({}, { phase: 'short' });
+    expect(callback).toHaveBeenCalledWith({ phase: 'short' });
+
+    unsubscribe();
+    expect(removeListener).toHaveBeenCalledWith('timer:snapshot', listener);
+  });
+
+  it('forwards phase-complete events and returns an unsubscribe function', () => {
+    const callback = vi.fn();
+    const unsubscribe = api.timer.onPhaseComplete(callback);
+    expect(on).toHaveBeenCalledWith('timer:phase-complete', expect.any(Function));
+
+    const listener = on.mock.calls.at(-1)[1];
+    listener({}, { type: 'phase-complete', completedPhase: 'focus' });
+    expect(callback).toHaveBeenCalledWith({ type: 'phase-complete', completedPhase: 'focus' });
+
+    unsubscribe();
+    expect(removeListener).toHaveBeenCalledWith('timer:phase-complete', listener);
   });
 });

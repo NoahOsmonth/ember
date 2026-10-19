@@ -69,6 +69,24 @@ describe('createStore', () => {
     expect(readDisk()).toMatchObject({ opacity: 1, theme: 'dusk' });
   });
 
+  it('writes a keyed timer snapshot without dropping settings', () => {
+    const store = open();
+    const snapshot = {
+      phase: 'focus',
+      status: 'running',
+      remainingMs: 1_000,
+      durationMs: 1_500_000,
+      endsAtWall: 1_700_000_000_000,
+      rounds: 1,
+      settingsRevision: 0,
+    };
+    store.set('timer', snapshot);
+    expect(store.get().timer).toEqual(snapshot);
+    expect(store.get().durations.focus).toBe(25);
+    expect(store.flush()).toBe(true);
+    expect(readDisk().timer).toEqual(snapshot);
+  });
+
   it('coalesces a burst of updates into a single write', async () => {
     const rename = vi.spyOn(fs, 'renameSync');
     const store = open({ debounceMs: 25 });

@@ -22,6 +22,7 @@ module.exports = defineConfig({
         'src/main/ipc.js',
         'src/main/channels.js',
         'src/main/test-support.js',
+        'src/main/timer-service.js',
       ],
       exclude: ['**/*.config.js', 'test/**'],
       thresholds: {

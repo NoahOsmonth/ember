@@ -25,21 +25,21 @@ installs the pre-commit hook.
 Every command below is defined in `package.json`; run them from the repository
 root.
 
-| Command                | What it does                                           |
-| ---------------------- | ------------------------------------------------------ |
-| `npm start`            | Launch the widget against the working tree.            |
-| `npm run lint`         | ESLint over the whole repository.                      |
-| `npm run typecheck`    | `tsc` over the JSDoc-annotated JavaScript (`checkJs`). |
-| `npm test`             | Run the unit suite once.                               |
-| `npm run test:watch`   | Re-run unit tests on change.                           |
-| `npm run test:cov`     | Run unit tests with V8 coverage and thresholds.        |
-| `npm run test:mutation`| Run Stryker over `src/core/timer.js` (70% floor).      |
-| `npm run test:e2e`     | Run the Playwright launch tests against the real app.  |
-| `npm run test:visual`  | Run the visual regression suite (Windows baselines).   |
-| `npm run format`       | Prettier over the repository.                          |
-| `npm run format:check` | Verify formatting without writing.                     |
-| `npm run dist`         | Build the Windows portable exe into `dist/`.           |
-| `npm run prepare`      | Install the git hooks (runs automatically on install). |
+| Command                 | What it does                                           |
+| ----------------------- | ------------------------------------------------------ |
+| `npm start`             | Launch the widget against the working tree.            |
+| `npm run lint`          | ESLint over the whole repository.                      |
+| `npm run typecheck`     | `tsc` over the JSDoc-annotated JavaScript (`checkJs`). |
+| `npm test`              | Run the unit suite once.                               |
+| `npm run test:watch`    | Re-run unit tests on change.                           |
+| `npm run test:cov`      | Run unit tests with V8 coverage and thresholds.        |
+| `npm run test:mutation` | Run Stryker over `src/core/timer.js` (70% floor).      |
+| `npm run test:e2e`      | Run the Playwright launch tests against the real app.  |
+| `npm run test:visual`   | Run the visual regression suite (Windows baselines).   |
+| `npm run format`        | Prettier over the repository.                          |
+| `npm run format:check`  | Verify formatting without writing.                     |
+| `npm run dist`          | Build the Windows portable exe into `dist/`.           |
+| `npm run prepare`       | Install the git hooks (runs automatically on install). |
 
 A pre-commit hook runs ESLint and Prettier on staged JavaScript files. Fix the
 reported problem and commit again; do not bypass the hook with

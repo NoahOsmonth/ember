@@ -232,9 +232,16 @@ function createStore({ file, schema, logger = null, debounceMs = 250 }) {
     },
     /**
      * Merge a patch into the document, validating the result.
+     *
+     * `set(key, value)` is a convenience form used by the timer service so the
+     * snapshot can be written without rebuilding the settings patch.
+     *
+     * @param {any} patch
+     * @param {any} [value]
      * @returns {{ value: any, issues: Array<SchemaIssue> }}
      */
-    set(patch) {
+    set(patch, value) {
+      if (typeof patch === 'string') patch = { [patch]: value };
       if (!patch || typeof patch !== 'object') return { value: document, issues: [] };
       const merged = { ...document, ...patch };
       if (patch.durations && typeof patch.durations === 'object') {

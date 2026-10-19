@@ -41,6 +41,7 @@ export const defaults = Object.freeze({
   x: null,
   y: null,
   tutorialSeen: false,
+  timer: null,
 });
 
 const BOOLEAN_PATHS = [
@@ -192,6 +193,12 @@ export function normalize(raw) {
     } else {
       issues.push(issue(path, 'invalid-type', 'expected a finite number or null'));
     }
+  }
+
+  if (doc.timer !== undefined) {
+    if (doc.timer === null) value.timer = null;
+    else if (isPlainObject(doc.timer)) value.timer = clone(doc.timer);
+    else issues.push(issue('timer', 'invalid-type', 'expected a timer snapshot object or null'));
   }
 
   for (const key of Object.keys(doc)) {

@@ -18,7 +18,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 const UNKNOWN_CHANNEL = /No handler registered/i;
 
 /**
- * @param {{ invoke: Function, send: Function, on: Function }} renderer
+ * @param {{ invoke: Function, send: Function, on: Function, removeListener?: Function }} renderer
  */
 function createApi(renderer) {
   /**
@@ -46,9 +46,14 @@ function createApi(renderer) {
   /**
    * @param {string} name
    * @param {(value: unknown) => void} callback
+   * @returns {() => void} unsubscribe
    */
   function on(name, callback) {
-    renderer.on(name, (_event, value) => callback(value));
+    const listener = (_event, value) => callback(value);
+    renderer.on(name, listener);
+    return () => {
+      if (typeof renderer.removeListener === 'function') renderer.removeListener(name, listener);
+    };
   }
 
   return {
@@ -71,6 +76,17 @@ function createApi(renderer) {
     },
     settings: {
       open: (tab) => invoke('settings:open', tab === undefined ? undefined : { tab }),
+    },
+    timer: {
+      get: () => invoke('timer:get'),
+      start: () => invoke('timer:start'),
+      pause: () => invoke('timer:pause'),
+      toggle: () => invoke('timer:toggle'),
+      skip: () => invoke('timer:skip'),
+      reset: () => invoke('timer:reset'),
+      subscribe: () => invoke('timer:subscribe'),
+      onSnapshot: (callback) => on('timer:snapshot', callback),
+      onPhaseComplete: (callback) => on('timer:phase-complete', callback),
     },
     // Explicit test-only methods. They are harmless in a release build: no
     // handler is registered, so each resolves to `{ ok: false, code:

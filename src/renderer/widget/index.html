@@ -54,6 +54,21 @@ import { barColor } from '../../core/themes.js';
     app: { quit() {} },
     menu: { show() {} },
     settings: { open: async () => ({ ok: true, value: undefined }) },
+    timer: {
+      get: async () => ({ ok: true, value: undefined }),
+      start: async () => ({ ok: true, value: undefined }),
+      pause: async () => ({ ok: true, value: undefined }),
+      toggle: async () => ({ ok: true, value: undefined }),
+      skip: async () => ({ ok: true, value: undefined }),
+      reset: async () => ({ ok: true, value: undefined }),
+      subscribe: async () => ({ ok: true, value: { snapshot: undefined, notice: null } }),
+      onSnapshot() {
+        return () => {};
+      },
+      onPhaseComplete() {
+        return () => {};
+      },
+    },
     onSettings() {},
     onCommand() {},
     onTab() {},
@@ -75,13 +90,29 @@ import { barColor } from '../../core/themes.js';
   const el = { digits: $('digits'), state: $('state'), pips: $('pips'), bars: $('bars'), note: $('note'), fuse: $('fuse') };
 
   let cfg = { ...DEFAULTS, locked: false };
-  const S = { phase: 'focus', running: false, rem: 0, endsAt: 0, done: 0 };
-  let bars = [], lastIdx = -2, lastText = '', flashUntil = 0, flashMsg = '';
+  let snap = {
+    phase: 'focus',
+    status: 'idle',
+    remainingMs: DEFAULTS.durations.focus * 60000,
+    durationMs: DEFAULTS.durations.focus * 60000,
+    endsAtWall: null,
+    rounds: 0,
+    settingsRevision: 0,
+  };
+  let pending = null;
+  let bars = [], lastIdx = -2, lastText = '', lastBuild = '', flashUntil = 0, flashMsg = '';
   let announcedRecovery = false;
 
-  const mins = () => cfg.durations[S.phase];
-  const total = () => mins() * 60000;
-  const remaining = () => Math.max(0, S.running ? S.endsAt - Date.now() : S.rem);
+  const total = () => snap.durationMs || cfg.durations[snap.phase] * 60000;
+  const remaining = () => Math.max(0, Math.min(snap.remainingMs, total()));
+
+  function mode() {
+    if (pending === 'paused') return 'paused';
+    if (pending === 'running') return 'running';
+    if (snap.status === 'running') return 'running';
+    if (snap.status === 'paused') return 'paused';
+    return 'ready';
+  }
 
   // Geometry comes from the core ruler: the unit grows so a long phase still
   // shows at most 30 bars, and the palette decides each bar's color.
@@ -94,38 +125,12 @@ import { barColor } from '../../core/themes.js';
     for (let i = 0; i < n; i++) {
       const b = document.createElement('i');
       b.className = 'bar' + ((i + 1) % 5 === 0 || i === n - 1 ? ' tick' : '');
-      b.style.setProperty('--c', barColor(cfg.theme, S.phase, i, n));
+      b.style.setProperty('--c', barColor(cfg.theme, snap.phase, i, n));
       el.bars.appendChild(b);
       bars.push(b);
     }
     lastIdx = -2;
   }
-
-  function setPhase(p) {
-    S.phase = p; S.running = false; S.rem = total();
-    build(); render();
-  }
-
-  const mode = () => (S.running ? 'running' : S.rem < total() ? 'paused' : 'ready');
-
-  function start() { S.endsAt = Date.now() + S.rem; S.running = true; render(); }
-  function pause() { S.rem = remaining(); S.running = false; render(); }
-  const toggle = () => (S.running ? pause() : start());
-
-  function advance(natural) {
-    const was = S.phase;
-    let next;
-    if (was === 'focus') { if (natural) S.done++; next = S.done >= cfg.rounds ? 'long' : 'short'; }
-    else { if (was === 'long') S.done = 0; next = 'focus'; }
-    setPhase(next);
-    if (natural) {
-      if (cfg.sound) chime(was, cfg.volume);
-      notify(was);
-      if (next === 'focus' ? cfg.autoFocus : cfg.autoBreak) start();
-    }
-  }
-
-  const resetPhase = () => setPhase(S.phase);
 
   function notify(was) {
     if (!cfg.notify) return;
@@ -137,21 +142,30 @@ import { barColor } from '../../core/themes.js';
     } catch {}
   }
 
-  function flash(msg, ms = 1400) { flashUntil = Date.now() + ms; flashMsg = msg; render(); }
+  function flash(msg, ms = 1400) {
+    flashUntil = Date.now() + ms;
+    flashMsg = msg;
+    render();
+    setTimeout(() => render(), ms + 10);
+  }
 
   function render() {
     const rem = remaining();
-    if (S.running && rem <= 0) { advance(true); return; }
-
     const m = mode();
     document.body.className = (cfg.mini ? 'mini ' : '') + m + (cfg.locked ? ' locked' : '');
+
+    const buildKey = snap.phase + '|' + total() + '|' + cfg.theme;
+    if (buildKey !== lastBuild) {
+      build();
+      lastBuild = buildKey;
+    }
 
     const secs = Math.ceil(rem / 1000);
     const text = String(Math.floor(secs / 60)).padStart(2, '0') + ':' + String(secs % 60).padStart(2, '0');
     if (text !== lastText) {
       el.digits.innerHTML = text.replace(':', '<span class="c">:</span>');
       lastText = text;
-      document.title = `${text} ${LABEL[S.phase]}`;
+      document.title = `${text} ${LABEL[snap.phase]}`;
     }
 
     // --f is the remaining fraction of a bar: the ruler drains left to right.
@@ -170,29 +184,52 @@ import { barColor } from '../../core/themes.js';
 
     el.state.textContent = Date.now() < flashUntil
       ? flashMsg
-      : m === 'ready' ? (S.phase === 'focus' ? 'ready' : LABEL[S.phase]) : m === 'paused' ? 'paused' : LABEL[S.phase];
+      : m === 'ready' ? (snap.phase === 'focus' ? 'ready' : LABEL[snap.phase]) : m === 'paused' ? 'paused' : LABEL[snap.phase];
 
     if (el.pips.children.length !== cfg.rounds) el.pips.innerHTML = '<i class="pip"></i>'.repeat(cfg.rounds);
+    const done = Math.min(snap.rounds, cfg.rounds);
     [...el.pips.children].forEach((p, i) => {
-      p.className = 'pip' + (i < S.done ? ' done' : i === S.done && S.phase === 'focus' ? ' now' : '');
+      p.className = 'pip' + (i < done ? ' done' : i === done && snap.phase === 'focus' ? ' now' : '');
     });
 
-    el.note.textContent = S.running
-      ? 'ends ' + new Date(S.endsAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+    el.note.textContent = snap.status === 'running' && snap.endsAtWall
+      ? 'ends ' + new Date(snap.endsAtWall).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
       : '';
   }
 
   /* interaction */
+  async function command(method, label) {
+    if (label) {
+      pending = label;
+      render();
+    }
+    const result = await method();
+    if (!result || result.ok !== true) {
+      pending = null;
+      flash('command failed', 2000);
+      return;
+    }
+    if (result.value && result.value.phase) {
+      snap = result.value;
+      pending = null;
+      render();
+    }
+  }
+
+  function toggle() {
+    command(api.timer.toggle, mode() === 'running' ? 'paused' : 'running');
+  }
+
   el.digits.addEventListener('click', toggle);
   $('bPlay').addEventListener('click', toggle);
-  $('bSkip').addEventListener('click', () => advance(false));
-  $('bReset').addEventListener('click', resetPhase);
+  $('bSkip').addEventListener('click', () => command(api.timer.skip));
+  $('bReset').addEventListener('click', () => command(api.timer.reset));
   $('bSettings').addEventListener('click', () => call(api.settings.open, 'settings'));
 
   addEventListener('keydown', e => {
     if (e.code === 'Space') { e.preventDefault(); toggle(); }
-    else if (e.key === 'r' || e.key === 'R') resetPhase();
-    else if (e.key === 's' || e.key === 'S') advance(false);
+    else if (e.key === 'r' || e.key === 'R') command(api.timer.reset);
+    else if (e.key === 's' || e.key === 'S') command(api.timer.skip);
     else if (e.key === 'm' || e.key === 'M') call(api.win.mini, !cfg.mini);
   });
 
@@ -233,10 +270,7 @@ import { barColor } from '../../core/themes.js';
     const prev = cfg;
     cfg = { ...cfg, ...s };
     document.documentElement.style.setProperty('--a', cfg.opacity);
-    const durChanged = JSON.stringify(prev.durations) !== JSON.stringify(cfg.durations);
-    if (durChanged || prev.rounds !== cfg.rounds) { S.done = 0; setPhase('focus'); }
-    else if (prev.theme !== cfg.theme) { build(); render(); }
-    else render();
+    render();
     if (cfg.locked && !prev.locked) flash('click-through', 4000);
     // One quiet line when the settings file had to be repaired or replaced.
     if (cfg.settingsRecovered && !announcedRecovery) { announcedRecovery = true; flash('settings reset', 4000); }
@@ -247,24 +281,56 @@ import { barColor } from '../../core/themes.js';
     const q = new URLSearchParams(location.search).get('demo');
     if (!q || window.ember) return false;
     const [ph, e, st, size, done, theme] = q.split(',');
-    cfg.mini = size === 'mini'; S.done = +done || 0;
+    cfg.mini = size === 'mini';
     if (theme) cfg.theme = theme;
-    setPhase(ph); S.rem = total() * (1 - parseFloat(e));
-    if (st === 'run') start(); else render();
+    const durationMs = (cfg.durations[ph] || cfg.durations.focus) * 60000;
+    const elapsed = Math.max(0, Math.min(1, parseFloat(e) || 0));
+    const status = st === 'run' ? 'running' : elapsed > 0 ? 'paused' : 'idle';
+    snap = {
+      phase: ph,
+      status,
+      remainingMs: durationMs * (1 - elapsed),
+      durationMs,
+      endsAtWall: status === 'running' ? Date.now() + durationMs * (1 - elapsed) : null,
+      rounds: +done || 0,
+      settingsRevision: 0,
+    };
+    render();
     return true;
   }
 
   api.onSettings(applySettings);
+  api.timer.onSnapshot(next => {
+    if (!next) return;
+    snap = next;
+    pending = null;
+    render();
+  });
+  api.timer.onPhaseComplete(event => {
+    if (!event) return;
+    if (cfg.sound) chime(event.completedPhase, cfg.volume);
+    notify(event.completedPhase);
+  });
   api.onCommand(c => { if (c === 'toggle') toggle(); });
+
   call(api.state.get).then(s => {
     if (s) cfg = { ...cfg, ...s };
     document.documentElement.style.setProperty('--a', cfg.opacity);
-    if (!demo()) setPhase('focus');
     if (cfg.settingsRecovered) { announcedRecovery = true; flash('settings reset', 4000); }
+    if (!demo()) render();
   });
 
-  setInterval(render, 200);
-  if (!demo()) setPhase('focus');
+  if (!demo()) {
+    call(api.timer.subscribe).then(result => {
+      if (!result) return;
+      if (result.snapshot) {
+        snap = result.snapshot;
+        pending = null;
+      }
+      if (result.notice) flash('a phase ended while away', 4000);
+      render();
+    });
+  }
 })();
 </script>
 </body>

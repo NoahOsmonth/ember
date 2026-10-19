@@ -52,6 +52,13 @@ function channelSpecs(v) {
         v.object({ tab: v.optional(v.enum(['settings', 'tutorial'])) }, { strict: true })
       ),
     },
+    { name: 'timer:get', kind: 'invoke', schema: none },
+    { name: 'timer:start', kind: 'invoke', schema: none },
+    { name: 'timer:pause', kind: 'invoke', schema: none },
+    { name: 'timer:toggle', kind: 'invoke', schema: none },
+    { name: 'timer:skip', kind: 'invoke', schema: none },
+    { name: 'timer:reset', kind: 'invoke', schema: none },
+    { name: 'timer:subscribe', kind: 'invoke', schema: none },
   ];
 }
 

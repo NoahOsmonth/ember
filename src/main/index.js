@@ -8,6 +8,7 @@ const { createClock } = require('./clock');
 const { createRegistry } = require('./ipc');
 const { channelSpecs } = require('./channels');
 const { registerTestChannels } = require('./test-support');
+const { createTimerService } = require('./timer-service');
 
 const SIZES = { full: { width: 340, height: 96 }, mini: { width: 156, height: 58 } };
 const PRESETS = {
@@ -70,6 +71,7 @@ const clock = createClock({ offsetMs: 0 });
 let state = { ...DEFAULTS, x: null, y: null, locked: false, tutorialSeen: false };
 let store = null;
 let logger = createLogger({});
+let timerService = null;
 let win, settingsWin;
 
 /** Everything the settings document owns; `locked` is deliberately not persisted. */
@@ -117,14 +119,61 @@ async function initSettings() {
   }
 }
 
-const publicState = () => ({
-  ...state,
-  launch: app.getLoginItemSettings().openAtLogin,
-  settingsRecovered: store ? store.recovered : false,
-});
+const publicState = () => {
+  const rest = /** @type {any} */ ({ ...state });
+  delete rest.timer;
+  return {
+    ...rest,
+    launch: app.getLoginItemSettings().openAtLogin,
+    settingsRecovered: store ? store.recovered : false,
+  };
+};
 function broadcast(except) {
   for (const w of BrowserWindow.getAllWindows()) {
     if (w !== except && !w.isDestroyed()) w.webContents.send('settings', publicState());
+  }
+}
+
+/** Push a timer payload to every open window. */
+function broadcastTimer(channel, payload) {
+  for (const w of BrowserWindow.getAllWindows()) {
+    if (!w.isDestroyed()) w.webContents.send(channel, payload);
+  }
+}
+
+/** Settings fields that the core timer reads. */
+function timerSettingsChanged(previous, next) {
+  return (
+    JSON.stringify(previous.durations) !== JSON.stringify(next.durations) ||
+    previous.rounds !== next.rounds ||
+    previous.autoBreak !== next.autoBreak ||
+    previous.autoFocus !== next.autoFocus
+  );
+}
+
+/**
+ * Construct the one timer owner after the store and before the first window.
+ * The service restores the persisted snapshot itself and queues a missed-phase
+ * notice for the widget's first subscribe.
+ */
+async function initTimer() {
+  const timerStore = store || {
+    get: () => ({}),
+    set: () => ({ value: {}, issues: [] }),
+    flush: () => {},
+  };
+  try {
+    timerService = await createTimerService({
+      store: timerStore,
+      clock,
+      broadcast: broadcastTimer,
+      logger,
+      onPhaseComplete: (event) => broadcastTimer('timer:phase-complete', event),
+    });
+    logger.info('timer service ready');
+  } catch (error) {
+    timerService = null;
+    logger.error(`timer unavailable (${error && error.message}); the widget cannot start a phase`);
   }
 }
 
@@ -254,6 +303,7 @@ function showMenu() {
         click: () => {
           state.durations = { ...p };
           save();
+          timerService?.applySettings(state);
           broadcast();
         },
       })),
@@ -288,23 +338,25 @@ async function initIpc() {
   const handlers = {
     'state:get': () => publicState(),
     'state:set': (patch, event) => {
+      const previous = state;
       const { launch, ...rest } = patch;
       state = { ...state, ...rest };
       if ('onTop' in rest) win.setAlwaysOnTop(!!rest.onTop, 'screen-saver');
       if (launch !== undefined) app.setLoginItemSettings({ openAtLogin: !!launch });
       save();
+      if (timerSettingsChanged(previous, state)) timerService?.applySettings(state);
       broadcast(fromEvent(event));
       return publicState();
     },
     'state:reset': () => {
+      const previous = state;
       const keepMini = state.mini;
       state = { ...state, ...DEFAULTS, locked: state.locked };
       win.setAlwaysOnTop(true, 'screen-saver');
+      save();
+      if (timerSettingsChanged(previous, state)) timerService?.applySettings(state);
       if (keepMini !== state.mini) setMini(state.mini);
-      else {
-        save();
-        broadcast();
-      }
+      else broadcast();
       return publicState();
     },
     'win:move': ({ dx, dy }, event) => {
@@ -324,6 +376,13 @@ async function initIpc() {
     'app:quit': () => app.quit(),
     'menu:show': () => showMenu(),
     'settings:open': (payload) => openSettings(payload && payload.tab),
+    'timer:get': () => timerService.get(),
+    'timer:start': () => timerService.start(),
+    'timer:pause': () => timerService.pause(),
+    'timer:toggle': () => timerService.toggle(),
+    'timer:skip': () => timerService.skip(),
+    'timer:reset': () => timerService.reset(),
+    'timer:subscribe': () => timerService.subscribe(),
   };
 
   for (const spec of channelSpecs(v)) {
@@ -345,22 +404,26 @@ else {
   });
   app.whenReady().then(async () => {
     await initSettings();
+    await initTimer();
     await initIpc();
     createWindow();
     // Registers only when EMBER_TEST=1 and EMBER_USER_DATA are both set.
     registerTestChannels({ ipcMain, clock, getWindow: () => win });
     globalShortcut.register('Control+Alt+P', () => (win.isVisible() ? win.hide() : win.show()));
-    globalShortcut.register('Control+Alt+Space', () => win.webContents.send('command', 'toggle'));
+    globalShortcut.register('Control+Alt+Space', () => timerService?.toggle());
     globalShortcut.register('Control+Alt+L', () => setLocked(!state.locked));
   });
   app.on('before-quit', () => {
+    if (timerService) timerService.dispose();
     if (store) store.flush();
   });
   app.on('will-quit', () => {
+    if (timerService) timerService.dispose();
     if (store) store.flush();
     globalShortcut.unregisterAll();
   });
   app.on('window-all-closed', () => {
+    if (timerService) timerService.dispose();
     if (store) store.flush();
     app.quit();
   });
