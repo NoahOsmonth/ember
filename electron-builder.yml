@@ -1,0 +1,13 @@
+appId: dev.sigmund.ember
+productName: Ember
+
+files:
+  - main.js
+  - preload.js
+  - index.html
+  - settings.html
+  - widget.css
+  - common.js
+
+win:
+  target: portable
