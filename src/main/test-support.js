@@ -39,7 +39,7 @@ function createHandlers({ clock, getWindow }) {
         throw new Error('test:setClock expects an ISO timestamp');
       }
       clock.setNow(target);
-      return new Date(clock.now()).toISOString();
+      return { ok: true, value: new Date(clock.now()).toISOString() };
     },
     'test:advanceClock': (_event, ms) => {
       const delta = Number(ms);
@@ -47,7 +47,7 @@ function createHandlers({ clock, getWindow }) {
         throw new Error('test:advanceClock expects milliseconds');
       }
       clock.advance(delta);
-      return new Date(clock.now()).toISOString();
+      return { ok: true, value: new Date(clock.now()).toISOString() };
     },
     'test:setBounds': (_event, bounds) => {
       const win = getWindow();
@@ -62,7 +62,7 @@ function createHandlers({ clock, getWindow }) {
           : current.height,
       };
       win.setBounds(next);
-      return win.getBounds();
+      return { ok: true, value: win.getBounds() };
     },
   };
 }

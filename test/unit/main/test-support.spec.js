@@ -54,9 +54,10 @@ describe('isEnabled', () => {
 describe('createHandlers', () => {
   it('sets the clock to an absolute instant', () => {
     const handlers = createHandlers({ clock: fakeClock(), getWindow: () => fakeWindow() });
-    expect(handlers['test:setClock'](null, '2030-06-01T00:00:00.000Z')).toBe(
-      '2030-06-01T00:00:00.000Z'
-    );
+    expect(handlers['test:setClock'](null, '2030-06-01T00:00:00.000Z')).toEqual({
+      ok: true,
+      value: '2030-06-01T00:00:00.000Z',
+    });
   });
 
   it('rejects an unparseable instant', () => {
@@ -66,7 +67,10 @@ describe('createHandlers', () => {
 
   it('advances the clock by a finite number of milliseconds', () => {
     const handlers = createHandlers({ clock: fakeClock(), getWindow: () => fakeWindow() });
-    expect(handlers['test:advanceClock'](null, 90_000)).toBe('2026-01-02T03:05:35.000Z');
+    expect(handlers['test:advanceClock'](null, 90_000)).toEqual({
+      ok: true,
+      value: '2026-01-02T03:05:35.000Z',
+    });
     expect(() => handlers['test:advanceClock'](null, Number.NaN)).toThrow(/milliseconds/);
   });
 
@@ -74,16 +78,12 @@ describe('createHandlers', () => {
     const win = fakeWindow();
     const handlers = createHandlers({ clock: fakeClock(), getWindow: () => win });
     expect(handlers['test:setBounds'](null, { x: 40, y: 50 })).toEqual({
-      x: 40,
-      y: 50,
-      width: 340,
-      height: 96,
+      ok: true,
+      value: { x: 40, y: 50, width: 340, height: 96 },
     });
     expect(handlers['test:setBounds'](null, { width: 156, height: 58 })).toEqual({
-      x: 40,
-      y: 50,
-      width: 156,
-      height: 58,
+      ok: true,
+      value: { x: 40, y: 50, width: 156, height: 58 },
     });
   });
 
