@@ -4,8 +4,8 @@
  * Move the application clock from an e2e test.
  *
  * The calls go through the real `test:` IPC channels, so the test exercises the
- * same handler the app uses. `suspend(ms)` is added to this file by change 9,
- * once `src/main/power.js` has a resume handler to call.
+ * same handler the app uses. `suspend(ms)` advances the clock and then drives
+ * the real resume path, so a test exercises the shipped power handling.
  */
 
 function unwrap(result, channel) {
@@ -42,4 +42,20 @@ async function advanceClock(page, ms) {
   return unwrap(result, 'test:advanceClock');
 }
 
-module.exports = { advanceClock, setClock };
+/**
+ * Simulate sleeping for `ms`: move the clock forward, then run the resume
+ * handler exactly as a `powerMonitor` resume would.
+ *
+ * @param {import('@playwright/test').Page} page
+ * @param {number} ms
+ * @returns {Promise<{ now: string, awayMs: number }>}
+ */
+async function suspend(page, ms) {
+  const result = await page.evaluate(
+    (delta) => /** @type {any} */ (window).ember.test.suspend(delta),
+    ms
+  );
+  return unwrap(result, 'test:suspend');
+}
+
+module.exports = { advanceClock, setClock, suspend };

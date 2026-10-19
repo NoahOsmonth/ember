@@ -81,9 +81,9 @@ test('a running phase survives quit and relaunch', async () => {
   const first = await launchEmber();
   let second;
   try {
-    // Put the main clock one minute behind so the persisted end instant is
+    // Put the main clock 45 seconds behind so the persisted end instant is
     // about 24 minutes away when the second process starts on the real clock.
-    await setClock(first.page, new Date(Date.now() - 60_000));
+    await setClock(first.page, new Date(Date.now() - 45_000));
     const started = await first.page.evaluate(() =>
       /** @type {any} */ (window).ember.timer.start()
     );

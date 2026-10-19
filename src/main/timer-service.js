@@ -36,7 +36,10 @@ const structural = (snapshot) => STRUCTURAL_KEYS.map((key) => snapshot[key]).joi
  * @returns {Promise<{
  *   start: () => any, pause: () => any, toggle: () => any, skip: () => any,
  *   reset: () => any, get: () => any, subscribe: () => { snapshot: any, notice: any },
- *   applySettings: (settings: any) => any, persist: () => any, dispose: () => void
+ *   applySettings: (settings: any) => any,
+ *   reconcile: (now: number, options?: { quiet?: boolean, awayMs?: number }) => any,
+ *   reanchor: (remainingMs?: number) => any, awayFor: (ms: number) => number,
+ *   persist: () => any, flush: () => void, dispose: () => void
  * }>}
  */
 async function createTimerService({
@@ -52,19 +55,32 @@ async function createTimerService({
   let ticker = null;
   let lastPersistAt = 0;
   let queuedNotice = null;
+  let quietReconcile = false;
+  let quietCompletion = null;
 
   /** @param {any} event */
   function handleEvent(event) {
     if (event.type === 'phase-complete') {
-      try {
-        onPhaseComplete(event);
-      } catch (error) {
-        if (logger && typeof logger.error === 'function') {
-          logger.error(`timer notification hook failed: ${error && error.message}`);
-        }
+      // A reconcile after a suspend must not play one chime per crossed phase.
+      // Hold the completion and forward it once, marked quiet.
+      if (quietReconcile) {
+        quietCompletion = event;
+        return;
       }
+      notifyComplete(event);
     }
     if (event.type === 'missed-while-away' && !queuedNotice) queuedNotice = event;
+  }
+
+  /** @param {any} event */
+  function notifyComplete(event) {
+    try {
+      onPhaseComplete(event);
+    } catch (error) {
+      if (logger && typeof logger.error === 'function') {
+        logger.error(`timer notification hook failed: ${error && error.message}`);
+      }
+    }
   }
 
   const timer = createTimer({
@@ -128,6 +144,81 @@ async function createTimerService({
     return after;
   }
 
+  /**
+   * Re-derive the timer from `endsAtWall` and the current instant.
+   *
+   * This is the same operation as startup restore, used by the power watcher
+   * after a resume or a forward clock jump. It is idempotent: a second call
+   * with the same `now` finds the same phase and advances nothing. With
+   * `quiet`, a crossed phase still produces exactly one notification, marked
+   * so the renderer skips the chime.
+   *
+   * @param {number} now
+   * @param {{ quiet?: boolean, awayMs?: number }} [options]
+   */
+  function reconcile(now, { quiet = false, awayMs = 0 } = {}) {
+    const at = Number.isFinite(now) ? now : clock.now();
+    const before = snapshot();
+    quietReconcile = quiet;
+    quietCompletion = null;
+    let after;
+    try {
+      after = timer.restore(before, at);
+    } finally {
+      quietReconcile = false;
+    }
+
+    if (quiet && quietCompletion) {
+      const completion = { ...quietCompletion, quiet: true, awayMs: awayFor(awayMs) };
+      quietCompletion = null;
+      notifyComplete(completion);
+    }
+
+    publish();
+    persist();
+    syncTicker();
+    return after;
+  }
+
+  /**
+   * Rewrite the running phase's end instant so it keeps `remainingMs`.
+   *
+   * Used after a backwards clock jump: the phase keeps its remaining time
+   * instead of gaining the jumped distance. A paused or idle timer has no end
+   * instant to rewrite and is returned unchanged.
+   *
+   * @param {number} [remainingMs]
+   */
+  function reanchor(remainingMs) {
+    const at = clock.now();
+    const current = snapshot();
+    if (current.status !== 'running') return current;
+    const wanted = Number.isFinite(remainingMs) ? remainingMs : current.remainingMs;
+    const remaining = Math.max(0, Math.min(current.durationMs, wanted));
+    const next = timer.restore({ ...current, endsAtWall: at + remaining }, at);
+    publish();
+    persist();
+    syncTicker();
+    return next;
+  }
+
+  /**
+   * Round an away duration for the notification payload.
+   *
+   * @param {number} ms
+   * @returns {number} whole milliseconds, never negative
+   */
+  function awayFor(ms) {
+    const value = Number(ms);
+    return Number.isFinite(value) && value > 0 ? Math.round(value) : 0;
+  }
+
+  /** Write the snapshot and drain the store, for OS shutdown. */
+  function flush() {
+    persist();
+    if (store && typeof store.flush === 'function') store.flush();
+  }
+
   // Restore once, before the first window exists. The core may emit
   // phase-complete and missed-while-away; the notice is held for the first
   // subscriber.
@@ -151,7 +242,11 @@ async function createTimerService({
       return { snapshot: snapshot(), notice };
     },
     applySettings: (settings) => run(() => timer.applySettings(settings)),
+    reconcile,
+    reanchor,
+    awayFor,
     persist,
+    flush,
     dispose() {
       if (ticker !== null) {
         clearInterval(ticker);

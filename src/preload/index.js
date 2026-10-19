@@ -95,6 +95,7 @@ function createApi(renderer) {
       setClock: (iso) => invoke('test:setClock', iso),
       advanceClock: (ms) => invoke('test:advanceClock', ms),
       setBounds: (bounds) => invoke('test:setBounds', bounds),
+      suspend: (ms) => invoke('test:suspend', ms),
     },
     onSettings: (callback) => on('settings', callback),
     onCommand: (callback) => on('command', callback),

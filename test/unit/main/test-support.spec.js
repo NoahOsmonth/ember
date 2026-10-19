@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import supportModule from '../../../src/main/test-support.js';
 
 const { TEST_CHANNEL_NAMES, createHandlers, isEnabled, registerTestChannel, registerTestChannels } =
@@ -85,6 +85,27 @@ describe('createHandlers', () => {
       ok: true,
       value: { x: 40, y: 50, width: 156, height: 58 },
     });
+  });
+
+  it('advances the clock and then drives the resume handler', () => {
+    const clock = fakeClock();
+    const suspend = vi.fn(() => ({ phase: 'short' }));
+    const handlers = createHandlers({ clock, getWindow: () => fakeWindow(), suspend });
+    expect(handlers['test:suspend'](null, 40 * 60_000)).toEqual({
+      ok: true,
+      value: { now: '2026-01-02T03:44:05.000Z', awayMs: 2_400_000 },
+    });
+    expect(suspend).toHaveBeenCalledWith(2_400_000);
+    expect(clock.now()).toBe(Date.parse('2026-01-02T03:44:05.000Z'));
+  });
+
+  it('rejects a negative or non-finite suspend duration', () => {
+    const clock = fakeClock();
+    const suspend = vi.fn();
+    const handlers = createHandlers({ clock, getWindow: () => fakeWindow(), suspend });
+    expect(() => handlers['test:suspend'](null, -1)).toThrow(/non-negative milliseconds/);
+    expect(() => handlers['test:suspend'](null, Number.NaN)).toThrow(/non-negative milliseconds/);
+    expect(suspend).not.toHaveBeenCalled();
   });
 
   it('fails clearly when the widget window is gone', () => {

@@ -11,7 +11,12 @@
  */
 
 /** Every channel this module owns. Later changes add to this list here. */
-const TEST_CHANNEL_NAMES = Object.freeze(['test:setClock', 'test:advanceClock', 'test:setBounds']);
+const TEST_CHANNEL_NAMES = Object.freeze([
+  'test:setClock',
+  'test:advanceClock',
+  'test:setBounds',
+  'test:suspend',
+]);
 
 /**
  * @param {NodeJS.ProcessEnv} [env]
@@ -29,9 +34,13 @@ function isEnabled(env = process.env) {
  * Build the handlers. Injected dependencies keep this module unit-testable
  * without Electron.
  *
- * @param {{ clock: { setNow: Function, advance: Function, now: Function }, getWindow: () => any }} deps
+ * @param {{
+ *   clock: { setNow: Function, advance: Function, now: Function },
+ *   getWindow: () => any,
+ *   suspend?: (ms: number) => any
+ * }} deps
  */
-function createHandlers({ clock, getWindow }) {
+function createHandlers({ clock, getWindow, suspend = () => null }) {
   return {
     'test:setClock': (_event, iso) => {
       const target = Date.parse(String(iso));
@@ -64,24 +73,36 @@ function createHandlers({ clock, getWindow }) {
       win.setBounds(next);
       return { ok: true, value: win.getBounds() };
     },
+    'test:suspend': (_event, ms) => {
+      const delta = Number(ms);
+      if (!Number.isFinite(delta) || delta < 0) {
+        throw new Error('test:suspend expects non-negative milliseconds');
+      }
+      clock.advance(delta);
+      suspend(delta);
+      return { ok: true, value: { now: new Date(clock.now()).toISOString(), awayMs: delta } };
+    },
   };
 }
 
 /**
  * Register one channel. Kept as a named helper so a later change can add a
- * channel next to the built-in three without restructuring this file.
+ * channel next to the built-in set without restructuring this file.
  */
 function registerTestChannel(ipcMain, name, handler) {
   ipcMain.handle(name, handler);
 }
 
 /**
- * @param {{ ipcMain: any, clock: any, getWindow: () => any, env?: NodeJS.ProcessEnv }} options
+ * @param {{
+ *   ipcMain: any, clock: any, getWindow: () => any,
+ *   suspend?: (ms: number) => any, env?: NodeJS.ProcessEnv
+ * }} options
  * @returns {string[]} the channels registered, empty when test mode is off
  */
-function registerTestChannels({ ipcMain, clock, getWindow, env = process.env }) {
+function registerTestChannels({ ipcMain, clock, getWindow, suspend, env = process.env }) {
   if (!isEnabled(env)) return [];
-  const handlers = createHandlers({ clock, getWindow });
+  const handlers = createHandlers({ clock, getWindow, suspend });
   for (const name of TEST_CHANNEL_NAMES) {
     registerTestChannel(ipcMain, name, handlers[name]);
   }

@@ -1,4 +1,12 @@
-const { app, BrowserWindow, ipcMain, Menu, globalShortcut, screen } = require('electron');
+const {
+  app,
+  BrowserWindow,
+  ipcMain,
+  Menu,
+  globalShortcut,
+  screen,
+  powerMonitor,
+} = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { pathToFileURL } = require('url');
@@ -9,6 +17,7 @@ const { createRegistry } = require('./ipc');
 const { channelSpecs } = require('./channels');
 const { registerTestChannels } = require('./test-support');
 const { createTimerService } = require('./timer-service');
+const { createPowerWatcher } = require('./power');
 const { WEB_PREFERENCES, hardenWindow } = require('./security');
 
 const SIZES = { full: { width: 340, height: 96 }, mini: { width: 156, height: 58 } };
@@ -73,6 +82,7 @@ let state = { ...DEFAULTS, x: null, y: null, locked: false, tutorialSeen: false 
 let store = null;
 let logger = createLogger({});
 let timerService = null;
+let powerWatcher = null;
 let win, settingsWin;
 
 /** Everything the settings document owns; `locked` is deliberately not persisted. */
@@ -192,6 +202,34 @@ function startPosition(size) {
     );
   });
   return visible ? { x: state.x, y: state.y } : def;
+}
+
+/**
+ * Keep the widget inside the work area it currently overlaps.
+ *
+ * Change 11 moves this clamp into `src/core/placement.js`; until then the
+ * display-change handler needs a local, side-effect-free version.
+ */
+function reclampWidget() {
+  if (!win || win.isDestroyed()) return;
+  const bounds = win.getBounds();
+  const area = screen.getDisplayMatching(bounds).workArea;
+  const x = Math.min(Math.max(bounds.x, area.x), area.x + area.width - bounds.width);
+  const y = Math.min(Math.max(bounds.y, area.y), area.y + area.height - bounds.height);
+  if (x !== bounds.x || y !== bounds.y) {
+    win.setBounds({ x, y, width: bounds.width, height: bounds.height });
+  }
+}
+
+/** Reassert the window level after unlock or a display change. */
+function reassertWindows() {
+  if (win && !win.isDestroyed()) {
+    win.setAlwaysOnTop(state.onTop, 'screen-saver');
+    reclampWidget();
+  }
+  if (settingsWin && !settingsWin.isDestroyed()) {
+    settingsWin.setAlwaysOnTop(true, 'screen-saver');
+  }
 }
 
 function setMini(mini) {
@@ -410,22 +448,38 @@ else {
     await initTimer();
     await initIpc();
     createWindow();
+    powerWatcher = createPowerWatcher({
+      clock,
+      timer: timerService,
+      windows: { reassert: reassertWindows },
+      logger,
+      powerMonitor,
+      screen,
+    });
     // Registers only when EMBER_TEST=1 and EMBER_USER_DATA are both set.
-    registerTestChannels({ ipcMain, clock, getWindow: () => win });
+    registerTestChannels({
+      ipcMain,
+      clock,
+      getWindow: () => win,
+      suspend: (ms) => (powerWatcher ? powerWatcher.handleResume(ms) : null),
+    });
     globalShortcut.register('Control+Alt+P', () => (win.isVisible() ? win.hide() : win.show()));
     globalShortcut.register('Control+Alt+Space', () => timerService?.toggle());
     globalShortcut.register('Control+Alt+L', () => setLocked(!state.locked));
   });
   app.on('before-quit', () => {
+    if (powerWatcher) powerWatcher.dispose();
     if (timerService) timerService.dispose();
     if (store) store.flush();
   });
   app.on('will-quit', () => {
+    if (powerWatcher) powerWatcher.dispose();
     if (timerService) timerService.dispose();
     if (store) store.flush();
     globalShortcut.unregisterAll();
   });
   app.on('window-all-closed', () => {
+    if (powerWatcher) powerWatcher.dispose();
     if (timerService) timerService.dispose();
     if (store) store.flush();
     app.quit();

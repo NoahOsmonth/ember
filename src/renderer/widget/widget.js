@@ -411,7 +411,8 @@ export function createWidget({
     cleanups.push(
       api.timer.onPhaseComplete((event) => {
         if (!event) return;
-        if (cfg.sound) chime(event.completedPhase, cfg.volume);
+        // A phase completed while the machine was away is reported, not chimed.
+        if (!event.quiet && cfg.sound) chime(event.completedPhase, cfg.volume);
         notify(event.completedPhase);
       })
     );

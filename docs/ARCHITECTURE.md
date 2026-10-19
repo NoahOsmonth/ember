@@ -17,6 +17,7 @@ src/
   main/store.js                 durable settings store: validation, atomic writes, recovery
   main/logger.js                rotating diagnostic log that never throws
   main/security.js              hardened webPreferences, navigation guards, openExternal allowlist
+  main/power.js                 suspend/resume, clock-jump policy, display and unlock reassertion
   preload/index.js              explicit contextBridge surface exposed as window.ember
   renderer/
     widget/index.html           the always-on-top timer strip (markup + CSP only)
@@ -107,6 +108,14 @@ The service restores before the first window, queues a missed-phase notice for
 the first `timer:subscribe`, and forwards `phase-complete` to the notification
 hook. The widget only renders snapshots and sends commands; a reload re-reads
 the snapshot from the service.
+
+`src/main/power.js` owns every `powerMonitor` and display subscription. A resume
+reconciles from `endsAtWall` through the same restore path, marks a crossed
+phase `quiet` so no chime plays, and reports it once with the away duration. A
+wall-versus-monotonic divergence beyond `JUMP_THRESHOLD_MS` (60 s) is a clock
+jump: backwards re-anchors the end instant to preserve the remaining time,
+forwards counts as elapsed (ADR 0006). Unlock and display changes re-apply the
+always-on-top level and re-clamp the widget into a work area.
 
 ## Renderer security and scheduling
 
