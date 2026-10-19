@@ -23,6 +23,39 @@ const DEFAULTS = {
   onTop: true,
 };
 
+/**
+ * Point Electron at a throwaway profile when the app is launched by a test.
+ *
+ * EMBER_TEST=1 requires EMBER_USER_DATA to be an absolute directory path; the
+ * settings file and log directory live inside it so tests never touch the real
+ * profile. Without EMBER_TEST the variable is ignored entirely.
+ */
+function configureTestProfile() {
+  if (process.env.EMBER_TEST !== '1') return;
+  const dir = process.env.EMBER_USER_DATA;
+  if (!dir || !path.isAbsolute(dir)) {
+    console.error(
+      'EMBER_TEST=1 requires EMBER_USER_DATA to be set to an absolute directory path.\n' +
+        'Create a throwaway directory for each run, for example:\n' +
+        '  EMBER_TEST=1 EMBER_USER_DATA="$(mktemp -d)" electron .'
+    );
+    app.exit(1);
+    return;
+  }
+  try {
+    fs.mkdirSync(dir, { recursive: true });
+    fs.mkdirSync(path.join(dir, 'logs'), { recursive: true });
+  } catch (err) {
+    console.error(`EMBER_TEST=1 could not prepare EMBER_USER_DATA at ${dir}: ${err.message}`);
+    app.exit(1);
+    return;
+  }
+  app.setPath('userData', dir);
+  app.setPath('logs', path.join(dir, 'logs'));
+}
+
+configureTestProfile();
+
 const stateFile = () => path.join(app.getPath('userData'), 'ember.json');
 let state = { ...DEFAULTS, x: null, y: null, locked: false, tutorialSeen: false };
 let win, settingsWin;
