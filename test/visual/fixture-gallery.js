@@ -13,7 +13,7 @@ import { FIXTURES, fixtureById } from '../fixtures/states.js';
 const WIDGET_MARKUP = `
   <div id="app">
     <div class="time">
-      <div class="digits" role="timer" aria-label="Time remaining">25<span class="c">:</span>00</div>
+      <div class="digits" role="timer" aria-label="Time remaining" aria-live="off">25<span class="c">:</span>00</div>
       <div class="meta"><span class="state">ready</span><span class="pips"></span></div>
     </div>
     <div class="strip">
@@ -32,12 +32,14 @@ const WIDGET_MARKUP = `
       </div>
     </div>
     <div class="fuse"><i></i></div>
+    <div class="sr-only" aria-live="polite" aria-atomic="true"></div>
   </div>
 `;
 
 const query = new URLSearchParams(location.search);
 const state = query.get('state');
 const theme = query.get('theme') === 'mono' ? 'mono' : 'dusk';
+const solid = query.get('solid') === '1';
 const gallery = document.getElementById('gallery');
 
 /**
@@ -55,7 +57,7 @@ function mountFixture(fixture) {
     now: () => 0,
     autoStart: false,
   });
-  widget.render(fixture.snapshot, { ...fixture.settings, theme });
+  widget.render(fixture.snapshot, { ...fixture.settings, theme, solid });
   container.dataset.ready = 'true';
   return widget;
 }

@@ -13,6 +13,7 @@ export const STRINGS = Object.freeze({
   commandFailed: 'command failed',
   settingsReset: 'settings reset',
   clickThrough: 'click-through',
+  solidFallback: 'solid background after a GPU crash',
   phaseEndedWhileAway: 'a phase ended while away',
   focusDoneTitle: 'Focus round done',
   focusDoneBody: 'Time for a break.',
@@ -40,6 +41,8 @@ export const STRINGS = Object.freeze({
   ends: (time) => `ends ${time}`,
   glass: (percent) => `glass ${percent}%`,
   percent: (value) => `${value}%`,
+  timerLabel: (phase, time) => `${phase}, ${time} remaining`,
+  phaseAnnouncement: (phase, time) => `${phase} phase, ${time} remaining`,
   presetSummary: (preset) => `${preset.focus} / ${preset.short} / ${preset.long}`,
   stepLabel: (index, title) => `Step ${index + 1}: ${title}`,
   tutorial: Object.freeze([

@@ -72,6 +72,8 @@
   .s-theme .m { display: flex; align-items: flex-end; gap: 2px; height: 20px; }
   .s-theme .m i { flex: 1; border-radius: 1px; height: 60%; background: var(--c); }
   .s-theme .m i:nth-child(5n) { height: 100%; }
+  .s-bg { display: flex; gap: 6px; }
+  .s-warn { margin: 8px 0 4px; padding: 8px 10px; border-radius: 9px; border: 1px solid rgba(255,157,143,.45); background: rgba(255,122,107,.1); color: #ffb4aa; font-size: 12px; }
 
   .s-btn { border: 1px solid rgba(255,255,255,.14); background: none; border-radius: 9px; padding: 6px 12px; font-size: 12.5px; color: rgba(255,255,255,.85); }
   .s-btn:hover { background: rgba(255,255,255,.09); }
@@ -159,6 +161,8 @@
     <div class="s-group">
       <h2>Look</h2>
       <div class="s-themes" id="themes"></div>
+      <div class="s-warn" id="contrastWarn" hidden></div>
+      <div class="s-row"><span>Background<small id="bgNote"></small></span><div class="s-bg" id="bgModes"><button class="s-chip" data-bg="auto" aria-label="Automatic background">Auto</button><button class="s-chip" data-bg="transparent" aria-label="Transparent background">Clear</button><button class="s-chip" data-bg="solid" aria-label="Solid background">Solid</button></div></div>
       <div class="s-row"><span>Glass opacity</span><div class="s-range"><input type="range" data-key="opacity" min="12" max="96" aria-label="Glass opacity"><output id="o-opacity"></output></div></div>
       <div class="s-row"><span>Compact size<small>just the time and a thin line</small></span><button class="s-sw" role="switch" data-key="mini" aria-label="Compact size"></button></div>
     </div>

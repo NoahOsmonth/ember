@@ -165,6 +165,36 @@ describe('widget fixture rendering', () => {
     vi.useRealTimers();
   });
 
+  it('toggles the solid class on the document element', () => {
+    const widget = createWidget({ root, now: () => 0, autoStart: false });
+    widget.render(IDLE, { ...fixtureById('idle').settings, solid: true });
+    expect(document.documentElement.classList.contains('solid')).toBe(true);
+
+    widget.render(IDLE, { ...fixtureById('idle').settings, solid: false });
+    expect(document.documentElement.classList.contains('solid')).toBe(false);
+    widget.destroy();
+  });
+
+  it('explains a GPU fallback once and keeps the solid background', () => {
+    vi.useFakeTimers();
+    const widget = createWidget({ root, now: () => 0, autoStart: false });
+    widget.render(IDLE, fixtureById('idle').settings);
+
+    widget.applySettings({ solid: true, solidOverride: 'gpu' });
+    expect(document.documentElement.classList.contains('solid')).toBe(true);
+    expect(stateOf(root)).toBe('solid background after a GPU crash');
+
+    // A second broadcast must not restart the notice.
+    widget.applySettings({ solid: true, solidOverride: 'gpu' });
+    expect(stateOf(root)).toBe('solid background after a GPU crash');
+
+    vi.runAllTimers();
+    widget.applySettings({ solid: false, solidOverride: null });
+    expect(document.documentElement.classList.contains('solid')).toBe(false);
+    widget.destroy();
+    vi.useRealTimers();
+  });
+
   it('sets the document title only when it owns the body', () => {
     const body = mountBody();
     const widget = createWidget({ root: body, now: () => 0, autoStart: false });

@@ -15,6 +15,9 @@ export const CURRENT_VERSION = 1;
 /** Themes the renderer knows how to paint, in picker order. */
 export const THEMES = Object.freeze(themeNames());
 
+/** Background modes: automatic, forced transparent, forced opaque. */
+export const BACKGROUNDS = Object.freeze(['auto', 'transparent', 'solid']);
+
 /** Documented clamp ranges, used by validation and by the settings UI. */
 export const LIMITS = Object.freeze({
   'durations.focus': Object.freeze({ min: 1, max: 180, integer: true }),
@@ -48,6 +51,7 @@ export const defaults = Object.freeze({
     lock: 'Control+Alt+L',
   }),
   placement: null,
+  render: Object.freeze({ background: 'auto' }),
   tutorialSeen: false,
   timer: null,
 });
@@ -222,6 +226,27 @@ export function normalize(raw) {
   if (doc.theme !== undefined) {
     if (typeof doc.theme === 'string' && THEMES.includes(doc.theme)) value.theme = doc.theme;
     else issues.push(issue('theme', 'invalid-type', 'expected one of ' + THEMES.join(', ')));
+  }
+
+  if (doc.render !== undefined) {
+    if (!isPlainObject(doc.render)) {
+      issues.push(issue('render', 'invalid-type', 'expected an object'));
+    } else {
+      if (doc.render.background !== undefined) {
+        if (BACKGROUNDS.includes(doc.render.background)) {
+          value.render.background = doc.render.background;
+        } else {
+          issues.push(
+            issue('render.background', 'invalid-type', 'expected one of ' + BACKGROUNDS.join(', '))
+          );
+        }
+      }
+      for (const key of Object.keys(doc.render)) {
+        if (key !== 'background') {
+          issues.push(issue(`render.${key}`, 'unknown-key', 'key is not part of the schema'));
+        }
+      }
+    }
   }
 
   if (doc.placement !== undefined) {

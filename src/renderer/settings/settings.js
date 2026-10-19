@@ -11,9 +11,12 @@ import { el, on, setStyle, text } from '../shared/dom.js';
 import { STRINGS } from '../shared/strings.js';
 
 /**
- * @param {{ api?: any }} [options]
+ * @param {{ api?: any, contrast?: (theme: string) => any }} [options]
  */
-export function createSettings({ api = /** @type {any} */ (globalThis).ember } = {}) {
+export function createSettings({
+  api = /** @type {any} */ (globalThis).ember,
+  contrast = C.themeContrast,
+} = {}) {
   if (!api) {
     console.error('ember settings: the preload API is unavailable');
     return null;
@@ -155,6 +158,16 @@ export function createSettings({ api = /** @type {any} */ (globalThis).ember } =
     themesEl.appendChild(button);
   });
 
+  // background: auto follows the GPU fallback, the other two force the look
+  const bgModes = $('#bgModes');
+  if (bgModes) {
+    $$('button', bgModes).forEach((button) =>
+      on(button, 'click', () =>
+        set({ render: { ...(cfg.render || {}), background: button.dataset.bg } })
+      )
+    );
+  }
+
   // steppers
   $$('.s-step').forEach((stepper) => {
     const key = stepper.dataset.key || '';
@@ -225,6 +238,29 @@ export function createSettings({ api = /** @type {any} */ (globalThis).ember } =
     $$('.s-theme').forEach((button) =>
       button.classList.toggle('on', button.dataset.id === cfg.theme)
     );
+    const background = (cfg.render && cfg.render.background) || 'auto';
+    $$('#bgModes button').forEach((button) =>
+      button.classList.toggle('on', button.dataset.bg === background)
+    );
+    text(
+      $('#bgNote'),
+      cfg.solidOverride === 'env'
+        ? 'forced by EMBER_SOLID'
+        : cfg.solidOverride === 'gpu'
+          ? 'solid after a GPU crash'
+          : ''
+    );
+    const themeContrast = contrast(cfg.theme);
+    const warning = $('#contrastWarn');
+    if (warning) {
+      warning.hidden = themeContrast.pass;
+      if (!themeContrast.pass) {
+        const worst = themeContrast.pairs.reduce((low, entry) =>
+          entry.ratio < low.ratio ? entry : low
+        );
+        warning.textContent = `${themeContrast.theme}: ${worst.pair} is ${worst.ratio.toFixed(1)}:1, below ${C.MIN_CONTRAST}:1`;
+      }
+    }
     $$('.s-step').forEach((stepper) => {
       const key = stepper.dataset.key || '';
       const value = key.startsWith('dur.') ? durations[key.slice(4)] : cfg[key];

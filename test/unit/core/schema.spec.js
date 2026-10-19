@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import fc from 'fast-check';
 import {
+  BACKGROUNDS,
   CURRENT_VERSION,
   LIMITS,
   THEMES,
@@ -93,6 +94,31 @@ describe('field table', () => {
     const rejected = normalize({ theme: 'neon' });
     expect(rejected.value.theme).toBe('dusk');
     expect(rejected.issues[0]).toMatchObject({ path: 'theme', code: 'invalid-type' });
+  });
+
+  it('defaults the background to auto and accepts every mode', () => {
+    expect(normalize({}).value.render).toEqual({ background: 'auto' });
+    for (const background of BACKGROUNDS) {
+      expect(normalize({ render: { background } }).value.render.background).toBe(background);
+    }
+    const rejected = normalize({ render: { background: 'glass' } });
+    expect(rejected.value.render.background).toBe('auto');
+    expect(rejected.issues[0]).toMatchObject({
+      path: 'render.background',
+      code: 'invalid-type',
+    });
+  });
+
+  it('rejects a non-object render block and unknown keys inside it', () => {
+    const wrong = normalize({ render: 'solid' });
+    expect(wrong.value.render.background).toBe('auto');
+    expect(wrong.issues[0]).toMatchObject({ path: 'render', code: 'invalid-type' });
+
+    const unknown = normalize({ render: { background: 'auto', glow: true } });
+    expect(unknown.value.render).toEqual({ background: 'auto' });
+    expect(unknown.issues).toEqual([
+      expect.objectContaining({ path: 'render.glow', code: 'unknown-key' }),
+    ]);
   });
 
   it('keeps booleans only when they are booleans', () => {

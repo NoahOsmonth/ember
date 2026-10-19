@@ -213,6 +213,45 @@ describe('settings renderer', () => {
     expect(document.documentElement.style.getPropertyValue('--acc')).toBe('oklch(0.842 0.000 0.0)');
   });
 
+  it('selects a background mode and reports an override', async () => {
+    expect($sel('#bgModes .on').dataset.bg).toBe('auto');
+    expect($id('contrastWarn').hidden).toBe(true);
+
+    const solid = $sel('#bgModes button[data-bg="solid"]');
+    solid.click();
+    await flush();
+
+    expect(api.calls.find((call) => call.name === 'state.set').args).toEqual([
+      { render: { background: 'solid' } },
+    ]);
+    expect(solid.classList.contains('on')).toBe(true);
+
+    api.emitSettings({ render: { background: 'solid' }, solid: true, solidOverride: 'env' });
+    await flush();
+    expect($id('bgNote').textContent).toBe('forced by EMBER_SOLID');
+  });
+
+  it('warns when a theme falls below the contrast floor', async () => {
+    mountPage();
+    createSettings({
+      api: fakeApi(),
+      contrast: () => ({
+        theme: 'Custom',
+        minimum: 3.1,
+        pass: false,
+        pairs: [
+          { pair: 'labels', fg: '#fff', bg: '#000', ratio: 4.8 },
+          { pair: 'digits[0]', fg: '#777', bg: '#000', ratio: 3.1 },
+        ],
+      }),
+    });
+    await flush();
+
+    const warning = $id('contrastWarn');
+    expect(warning.hidden).toBe(false);
+    expect(warning.textContent).toBe('Custom: digits[0] is 3.1:1, below 4.5:1');
+  });
+
   it('steps, clamps and types duration values', async () => {
     plusOf('dur.focus').click();
     await flush();

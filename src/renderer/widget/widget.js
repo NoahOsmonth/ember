@@ -52,6 +52,7 @@ export function createWidget({
     bars: pick('.bars'),
     note: pick('.note'),
     fuse: pick('.fuse'),
+    announce: pick('.sr-only'),
     play: pick('.play'),
     skip: pick('.skip'),
     reset: pick('.reset'),
@@ -79,6 +80,7 @@ export function createWidget({
   let flashUntil = 0;
   let flashMsg = '';
   let announcedRecovery = false;
+  let announcedSolid = false;
   let anchorRemaining = snap.remainingMs;
   let anchorAt = now();
   let opacityTimer = null;
@@ -102,6 +104,12 @@ export function createWidget({
       return Math.max(0, Math.min(limit, anchorRemaining - (now() - anchorAt)));
     }
     return Math.max(0, Math.min(limit, snap.remainingMs));
+  }
+
+  /** mm:ss, rounded up so a fresh 25-minute phase reads 25:00, not 24:59. */
+  function formatRemaining(ms) {
+    const secs = Math.ceil(Math.max(0, ms) / 1000);
+    return `${String(Math.floor(secs / 60)).padStart(2, '0')}:${String(secs % 60).padStart(2, '0')}`;
   }
 
   function mode() {
@@ -157,6 +165,9 @@ export function createWidget({
     const minutes = String(Math.floor(secs / 60)).padStart(2, '0');
     const seconds = String(secs % 60).padStart(2, '0');
     const value = `${minutes}:${seconds}`;
+    if (nodes.digits) {
+      nodes.digits.setAttribute('aria-label', STRINGS.timerLabel(phaseLabel(snap.phase), value));
+    }
     if (value === lastText) return;
     if (nodes.digits) {
       nodes.digits.replaceChildren(
@@ -177,6 +188,7 @@ export function createWidget({
       current +
       (cfg.locked ? ' locked' : '')
     ).trim();
+    if (doc.documentElement) doc.documentElement.classList.toggle('solid', cfg.solid === true);
     setStyle(styleRoot, '--a', cfg.opacity);
 
     text(nodes.state, now() < flashUntil ? flashMsg : statusLabel(current, snap.phase));
@@ -267,10 +279,19 @@ export function createWidget({
 
   function applySnapshot(next) {
     if (!next) return;
+    const previousPhase = snap.phase;
     snap = next;
     pending = null;
     anchorRemaining = next.remainingMs;
     anchorAt = now();
+    // The digits update every second and are deliberately silent; one polite
+    // sentence per phase transition is the whole announcement budget.
+    if (next.phase !== previousPhase) {
+      text(
+        nodes.announce,
+        STRINGS.phaseAnnouncement(phaseLabel(next.phase), formatRemaining(next.remainingMs))
+      );
+    }
     renderAll();
     syncLoops();
   }
@@ -284,6 +305,10 @@ export function createWidget({
     if (cfg.settingsRecovered && !announcedRecovery) {
       announcedRecovery = true;
       flash(STRINGS.settingsReset, 4000);
+    }
+    if (cfg.solidOverride === 'gpu' && !announcedSolid) {
+      announcedSolid = true;
+      flash(STRINGS.solidFallback, 5000);
     }
   }
 
@@ -422,7 +447,10 @@ export function createWidget({
     call(api.state.get).then((settings) => {
       if (settings) cfg = { ...cfg, ...settings };
       setStyle(styleRoot, '--a', cfg.opacity);
-      if (cfg.settingsRecovered) {
+      if (cfg.solidOverride === 'gpu' && !announcedSolid) {
+        announcedSolid = true;
+        flash(STRINGS.solidFallback, 5000);
+      } else if (cfg.settingsRecovered) {
         announcedRecovery = true;
         flash(STRINGS.settingsReset, 4000);
       } else {

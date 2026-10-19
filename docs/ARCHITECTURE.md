@@ -36,6 +36,7 @@ src/
     schema.js                   versioned settings document: defaults, limits, migrations, normalize()
     validate.js                 IPC payload shapes: string, number, boolean, enum, object, array, optional
     placement.js                pure work-area clamp, right dock, display pick, scale fit
+    contrast.js                 WCAG contrast for the theme tokens and the glass base
     timer.js                    pure phase/status state machine driven by an injected clock
     ruler.js                    unitFor() and computeRuler(): bars and fill fractions from ms
     themes.js                   THEMES, themeNames(), resolveTheme(), barColor()
@@ -144,6 +145,33 @@ the right edge fixed, and `win:dock` moves the widget to the right edge.
 
 The schema accepts the pre-placement root `{ x, y }` (and a nested `window`
 object) and converts it to `placement` once; the old keys are not written again.
+
+## Rendering fallbacks and accessibility
+
+`render.background` is `auto` (the default), `transparent` or `solid`. The main
+process resolves the effective value and publishes it as `solid` in the public
+state. `EMBER_SOLID=1` forces it for support diagnosis; two
+`child-process-gone` events of type `GPU` in one session do the same for the
+rest of that session (the decision is not persisted, so a driver update restores
+the intended look). The renderer toggles `html.solid`, which paints `#app`
+opaque. `solidOverride` (`env` or `gpu`) lets the widget explain a GPU fallback
+once and lets the settings window report the environment override.
+
+The widget is operable without sight: every control carries an `aria-label`,
+the digits are `role="timer"` with `aria-live="off"`, and one polite live region
+announces each phase transition (never each tick). Controls use an inset
+`:focus-visible` ring and the hidden control row becomes visible on
+`#app:focus-within`, so tab order matches the visual order. `@media
+(forced-colors: active)` maps the palette to Canvas/CanvasText/Highlight, and
+`prefers-reduced-motion: reduce` removes the bar, fuse and breathing animations.
+The digits use `font-variant-numeric: tabular-nums` over a stable font stack, so
+the timer does not shift horizontally as seconds change.
+
+`src/core/contrast.js` converts the theme's oklch tokens to sRGB, computes WCAG
+relative luminance and exposes `contrastRatio` and `themeContrast`. The unit
+test requires 4.5:1 for every focus-accent sample and the dimmest label against
+the solid glass base; the settings window runs the same computation and shows a
+warning if a theme ever drops below the floor.
 
 ## Renderer security and scheduling
 

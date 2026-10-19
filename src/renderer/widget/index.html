@@ -11,7 +11,7 @@
 <body class="ready">
   <div id="app">
     <div class="time">
-      <div class="digits" id="digits" role="timer" aria-label="Time remaining">25<span class="c">:</span>00</div>
+      <div class="digits" id="digits" role="timer" aria-label="Time remaining" aria-live="off">25<span class="c">:</span>00</div>
       <div class="meta"><span class="state" id="state">ready</span><span class="pips" id="pips"></span></div>
     </div>
     <div class="strip">
@@ -30,6 +30,7 @@
       </div>
     </div>
     <div class="fuse"><i id="fuse"></i></div>
+    <div class="sr-only" id="announce" aria-live="polite" aria-atomic="true"></div>
   </div>
 
 <script type="module" src="widget.js"></script>

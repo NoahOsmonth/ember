@@ -1,10 +1,14 @@
-:root { --a: .62; --accent: #fff; color-scheme: dark; }
+:root { --a: .62; --accent: #fff; --bg-solid: #08090d; color-scheme: dark; }
 * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-user-select: none; }
 html, body { height: 100%; background: transparent; overflow: hidden; }
 body {
   font-family: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
   color: #fff;
   cursor: default;
+}
+.sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
 }
 
 /* the glass */
@@ -19,11 +23,13 @@ body {
   transition: opacity .35s ease;
 }
 body.locked #app { opacity: .5; }
+/* The solid fallback paints the glass opaque; the window corners stay round. */
+html.solid #app { background: var(--bg-solid); }
 
 /* time */
 .time { display: grid; gap: 7px; }
 .digits {
-  font-family: "Bahnschrift", "Segoe UI Variable Display", "Segoe UI", sans-serif;
+  font-family: "Bahnschrift", "Cascadia Mono", "Consolas", ui-monospace, monospace;
   font-variation-settings: "wght" 300, "wdth" 75;
   font-size: 56px; line-height: .86; letter-spacing: -.012em;
   font-variant-numeric: tabular-nums;
@@ -58,6 +64,7 @@ body.locked #app { opacity: .5; }
   content: ""; position: absolute; inset: 0; border-radius: inherit;
   background: var(--c);
   clip-path: inset(calc((1 - var(--f, 1)) * 100%) 0 0 0);
+  transition: clip-path .16s linear;
 }
 .paused .bars { animation: breathe 3s ease-in-out infinite; }
 @keyframes breathe { 50% { opacity: .55; } }
@@ -65,14 +72,14 @@ body.locked #app { opacity: .5; }
 .foot { position: relative; display: flex; align-items: center; height: 18px; }
 .note { font-size: 11.5px; color: rgba(255, 255, 255, .5); text-shadow: 0 1px 6px rgba(0,0,0,.5); white-space: nowrap; font-variant-numeric: tabular-nums; transition: opacity .18s; }
 .ctl { position: absolute; right: -4px; top: 0; bottom: 0; display: flex; align-items: center; gap: 1px; opacity: 0; transform: translateX(6px); transition: opacity .18s, transform .18s; pointer-events: none; }
-#app:hover .ctl, .hov .ctl { opacity: 1; transform: none; pointer-events: auto; }
-#app:hover .note, .hov .note { opacity: 0; }
+#app:hover .ctl, #app:focus-within .ctl, .hov .ctl { opacity: 1; transform: none; pointer-events: auto; }
+#app:hover .note, #app:focus-within .note, .hov .note { opacity: 0; }
 .ctl button {
   width: 24px; height: 18px; display: grid; place-items: center;
   border: 0; border-radius: 6px; background: transparent; color: rgba(255, 255, 255, .62); cursor: pointer;
 }
 .ctl button:hover, .ctl button.lit { background: rgba(255, 255, 255, .14); color: #fff; }
-.ctl button:focus-visible { outline: 1.5px solid var(--accent); outline-offset: 1px; }
+.ctl button:focus-visible { outline: 1.5px solid var(--accent); outline-offset: -2px; }
 .ctl svg { width: 12px; height: 12px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
 .ctl .play-i, .ctl .pause-i { fill: currentColor; stroke: none; }
 .ctl .pause-i, .running .ctl .play-i { display: none; }
@@ -83,8 +90,29 @@ body.locked #app { opacity: .5; }
 .mini .digits { font-size: 36px; }
 .mini .meta, .mini .strip { display: none; }
 .fuse { display: none; position: absolute; left: 22px; right: 22px; bottom: 9px; height: 2px; border-radius: 2px; background: rgba(255,255,255,.12); overflow: hidden; }
-.fuse i { display: block; height: 100%; width: calc(var(--p, 1) * 100%); background: var(--accent); transition: background 1.2s; }
+.fuse i { display: block; height: 100%; width: calc(var(--p, 1) * 100%); background: var(--accent); transition: width .16s linear, background 1.2s; }
 .mini .fuse { display: block; }
 .mini .time { gap: 0; margin-top: -6px; }
 
-@media (prefers-reduced-motion: reduce) { .running .digits .c, .paused .bars { animation: none !important; } }
+@media (prefers-reduced-motion: reduce) {
+  .running .digits .c, .paused .bars { animation: none !important; }
+  .bar::after, .fuse i { transition: none !important; }
+}
+
+/* High Contrast ignores authored colours; cooperate with the system palette
+   instead of fighting it, so nothing turns invisible. */
+@media (forced-colors: active) {
+  html, body, #app { background: Canvas; }
+  #app { border-color: CanvasText; box-shadow: none; }
+  .digits, .ready .digits, .paused .digits,
+  .state, .note, .ctl button, .ctl button:hover, .ctl button.lit { color: CanvasText; text-shadow: none; }
+  .paused .digits { opacity: 1; }
+  .bar { background: Canvas; box-shadow: inset 0 0 0 1px CanvasText; }
+  .bar::after { background: Highlight; forced-color-adjust: none; }
+  .pip { box-shadow: inset 0 0 0 1px CanvasText; }
+  .pip.done { background: CanvasText; }
+  .pip.now { box-shadow: inset 0 0 0 1px Highlight; }
+  .fuse { background: Canvas; box-shadow: inset 0 0 0 1px CanvasText; }
+  .fuse i { background: Highlight; }
+  .ctl button:focus-visible { outline-color: Highlight; }
+}

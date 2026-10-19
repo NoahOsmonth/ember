@@ -37,3 +37,34 @@ test.describe('widget visual matrix', () => {
     });
   }
 });
+
+test.describe('widget fallbacks', () => {
+  const canRun = process.platform === 'win32' || process.env.EMBER_VISUAL_FORCE === '1';
+  test.skip(!canRun, 'visual baselines are Windows-only');
+  test.use({ viewport: { width: 340, height: 96 }, deviceScaleFactor: 1 });
+
+  test('solid background', async ({ page }) => {
+    await page.goto('/test/visual/fixture-gallery.html?state=running&theme=dusk&solid=1');
+    await page.waitForFunction(() => document.body.dataset.ready === 'true');
+    await page.evaluate(() => document.fonts.ready.then(() => true));
+
+    await expect(page.locator('#app')).toHaveScreenshot('widget-solid-running-1x.png', {
+      animations: 'disabled',
+      caret: 'hide',
+      maxDiffPixelRatio: MAX_DIFF_PIXEL_RATIO,
+    });
+  });
+
+  test('reduced motion', async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await page.goto('/test/visual/fixture-gallery.html?state=running&theme=dusk');
+    await page.waitForFunction(() => document.body.dataset.ready === 'true');
+    await page.evaluate(() => document.fonts.ready.then(() => true));
+
+    await expect(page.locator('#app')).toHaveScreenshot('widget-reduced-motion-running-1x.png', {
+      animations: 'disabled',
+      caret: 'hide',
+      maxDiffPixelRatio: MAX_DIFF_PIXEL_RATIO,
+    });
+  });
+});

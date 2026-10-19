@@ -40,6 +40,7 @@ const DEFAULTS = {
   opacity: 0.62,
   mini: false,
   onTop: true,
+  render: { background: 'auto' },
 };
 
 /**
@@ -87,6 +88,28 @@ let powerWatcher = null;
 let shortcuts = null;
 let widget = null;
 let win, settingsWin;
+
+// Support diagnosis switch: an opaque window regardless of the saved setting.
+const ENV_SOLID = process.env.EMBER_SOLID === '1';
+let gpuCrashes = 0;
+let gpuSolid = false;
+
+/**
+ * The background the widget should actually paint.
+ *
+ * The environment override wins over everything, then a GPU fallback that lasts
+ * for the session, then the saved mode.
+ */
+function effectiveSolid() {
+  return ENV_SOLID || gpuSolid || (state.render && state.render.background === 'solid');
+}
+
+/** Why the background is forced opaque, if it is. */
+function solidOverride() {
+  if (ENV_SOLID) return 'env';
+  if (gpuSolid) return 'gpu';
+  return null;
+}
 
 /** Everything the settings document owns; `locked` is deliberately not persisted. */
 const PERSISTED_KEYS = Object.keys(DEFAULTS).concat(['placement', 'tutorialSeen']);
@@ -156,6 +179,8 @@ const publicState = () => {
     ...rest,
     launch: app.getLoginItemSettings().openAtLogin,
     settingsRecovered: store ? store.recovered : false,
+    solid: effectiveSolid(),
+    solidOverride: solidOverride(),
   };
 };
 function broadcast(except) {
@@ -493,6 +518,21 @@ else {
       win.show();
       setLocked(false);
     }
+  });
+  // A transparent window without a working GPU renders as a black box. Two
+  // crashes in one session are enough evidence to stop trying; the decision is
+  // not persisted, so a driver update restores the intended look.
+  app.on('child-process-gone', (_event, details) => {
+    if (!details || details.type !== 'GPU') return;
+    gpuCrashes += 1;
+    if (gpuCrashes < 2) {
+      logger.warn(`GPU process gone (${details.reason || 'unknown'}); waiting for a second`);
+      return;
+    }
+    if (gpuSolid) return;
+    gpuSolid = true;
+    logger.warn('GPU process crashed twice this session; switching to a solid background');
+    broadcast();
   });
   app.whenReady().then(async () => {
     await initSettings();

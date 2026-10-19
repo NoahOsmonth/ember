@@ -9,6 +9,7 @@ import { defaults } from '../../core/schema.js';
 
 export { computeRuler, unitFor } from '../../core/ruler.js';
 export { THEMES, barColor, resolveTheme, themeNames } from '../../core/themes.js';
+export { MIN_CONTRAST, contrastRatio, themeContrast } from '../../core/contrast.js';
 export { acceleratorFromCode } from '../../core/accelerators.js';
 
 /** The document a fresh install starts from; the store owns validation. */

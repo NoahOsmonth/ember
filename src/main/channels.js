@@ -29,6 +29,9 @@ function channelSpecs(v) {
     opacity: v.optional(v.number({ min: 0.12, max: 0.96 })),
     mini: v.optional(v.boolean()),
     onTop: v.optional(v.boolean()),
+    render: v.optional(
+      v.object({ background: v.enum(['auto', 'transparent', 'solid']) }, { strict: true })
+    ),
     launch: v.optional(v.boolean()),
     tutorialSeen: v.optional(v.boolean()),
   });
