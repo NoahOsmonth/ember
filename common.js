@@ -1,5 +1,5 @@
 /* Shared by the widget, the settings window and the tutorial. */
-window.EmberCommon = (() => {
+/** @type {any} */ (window).EmberCommon = (() => {
   const PRESETS = {
     classic: { name: 'Classic', focus: 25, short: 5, long: 15 },
     deep: { name: 'Deep', focus: 50, short: 10, long: 30 },
