@@ -3,7 +3,7 @@
   "productName": "Ember",
   "version": "1.0.0",
   "description": "A transparent, always-on-top pomodoro strip for Windows 11",
-  "main": "main.js",
+  "main": "src/main/index.js",
   "scripts": {
     "start": "electron .",
     "lint": "eslint .",

@@ -101,10 +101,13 @@ function createWindow() {
     hasShadow: false,
     alwaysOnTop: true,
     title: 'Ember',
-    webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true },
+    webPreferences: {
+      preload: path.join(__dirname, '../preload/index.js'),
+      contextIsolation: true,
+    },
   });
   win.setAlwaysOnTop(state.onTop, 'screen-saver');
-  win.loadFile('index.html');
+  win.loadFile('src/renderer/widget/index.html');
   win.webContents.on('did-finish-load', () => {
     win.webContents.send('settings', publicState());
     if (!state.tutorialSeen) {
@@ -146,10 +149,13 @@ function openSettings(tab = 'settings') {
     fullscreenable: false,
     hasShadow: false,
     title: 'Ember settings',
-    webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true },
+    webPreferences: {
+      preload: path.join(__dirname, '../preload/index.js'),
+      contextIsolation: true,
+    },
   });
   settingsWin.setAlwaysOnTop(true, 'screen-saver');
-  settingsWin.loadFile('settings.html', { query: { tab } });
+  settingsWin.loadFile('src/renderer/settings/index.html', { query: { tab } });
   settingsWin.on('closed', () => {
     settingsWin = null;
   });
