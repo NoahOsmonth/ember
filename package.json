@@ -6,11 +6,21 @@
   "main": "main.js",
   "scripts": {
     "start": "electron .",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
     "dist": "electron-builder --win portable"
   },
+  "engines": {
+    "node": ">=22"
+  },
   "devDependencies": {
-    "electron": "^33.0.0",
-    "electron-builder": "^25.1.8"
+    "@eslint/js": "^10.0.1",
+    "electron": "33.4.11",
+    "electron-builder": "25.1.8",
+    "eslint": "^10.13.0",
+    "globals": "^17.13.0",
+    "prettier": "^3.9.10"
   },
   "build": {
     "appId": "dev.sigmund.ember",

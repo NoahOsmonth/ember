@@ -1,0 +1,17 @@
+node_modules/
+dist/
+out/
+coverage/
+test-results/
+playwright-report/
+package-lock.json
+openspec/
+roadmap.md
+.agents/
+.dsh/
+.hormachuelos/
+
+# The prototype's hand-tuned markup and stylesheet are moved byte-for-byte in
+# the layout migration; reformatting them here would hide that move in churn.
+*.html
+*.css
