@@ -236,10 +236,10 @@
   </section>
 </div>
 
-<script src="../shared/common.js"></script>
-<script>
+<script type="module">
+import * as C from '../shared/common.js';
+
 (() => {
-  const C = window.EmberCommon;
   const $ = (s, r = document) => r.querySelector(s);
   const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 
@@ -304,7 +304,9 @@
 
   // themes
   const themesEl = $('#themes');
-  Object.entries(C.THEMES).forEach(([id, t]) => {
+  // One source of truth: the picker is built from the core palette table.
+  C.themeNames().forEach(id => {
+    const t = C.THEMES[id];
     const b = document.createElement('button');
     b.className = 's-theme'; b.dataset.id = id;
     let bars = '';

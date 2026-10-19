@@ -31,13 +31,15 @@
     <div class="fuse"><i id="fuse"></i></div>
   </div>
 
-<script src="../shared/common.js"></script>
-<script>
+<script type="module">
+import { DEFAULTS, chime } from '../shared/common.js';
+import { computeRuler } from '../../core/ruler.js';
+import { barColor } from '../../core/themes.js';
+
 (() => {
-  const C = window.EmberCommon;
   // Falls back to a stub so index.html also previews in a plain browser.
   const api = window.ember || {
-    getState: async () => ({ ...C.DEFAULTS }),
+    getState: async () => ({ ...DEFAULTS }),
     setState() {}, moveTo() {}, setMini() {}, showMenu() {}, openSettings() {}, onSettings() {}, onCommand() {},
   };
 
@@ -45,26 +47,27 @@
   const $ = id => document.getElementById(id);
   const el = { digits: $('digits'), state: $('state'), pips: $('pips'), bars: $('bars'), note: $('note'), fuse: $('fuse') };
 
-  let cfg = { ...C.DEFAULTS, locked: false };
+  let cfg = { ...DEFAULTS, locked: false };
   const S = { phase: 'focus', running: false, rem: 0, endsAt: 0, done: 0 };
-  let bars = [], unit = 1, lastIdx = -2, lastText = '', flashUntil = 0, flashMsg = '';
+  let bars = [], lastIdx = -2, lastText = '', flashUntil = 0, flashMsg = '';
   let announcedRecovery = false;
 
   const mins = () => cfg.durations[S.phase];
   const total = () => mins() * 60000;
   const remaining = () => Math.max(0, S.running ? S.endsAt - Date.now() : S.rem);
 
+  // Geometry comes from the core ruler: the unit grows so a long phase still
+  // shows at most 30 bars, and the palette decides each bar's color.
   function build() {
-    const min = mins();
-    unit = C.unitFor(min);
-    const n = Math.ceil(min / unit);
+    const ruler = computeRuler({ durationMs: total() });
+    const n = ruler.count;
     el.bars.style.setProperty('--gap', n > 20 ? '3px' : '5px');
     el.bars.innerHTML = '';
     bars = [];
     for (let i = 0; i < n; i++) {
       const b = document.createElement('i');
       b.className = 'bar' + ((i + 1) % 5 === 0 || i === n - 1 ? ' tick' : '');
-      b.style.setProperty('--c', C.barColor(cfg.theme, S.phase, i, n));
+      b.style.setProperty('--c', barColor(cfg.theme, S.phase, i, n));
       el.bars.appendChild(b);
       bars.push(b);
     }
@@ -89,7 +92,7 @@
     else { if (was === 'long') S.done = 0; next = 'focus'; }
     setPhase(next);
     if (natural) {
-      if (cfg.sound) C.chime(was, cfg.volume);
+      if (cfg.sound) chime(was, cfg.volume);
       notify(was);
       if (next === 'focus' ? cfg.autoFocus : cfg.autoBreak) start();
     }
@@ -124,15 +127,18 @@
       document.title = `${text} ${LABEL[S.phase]}`;
     }
 
-    const elapsed = total() - rem, barMs = unit * 60000;
-    const idx = Math.min(bars.length - 1, Math.floor(elapsed / barMs));
-    const frac = 1 - (elapsed - idx * barMs) / barMs;
+    // --f is the remaining fraction of a bar: the ruler drains left to right.
+    const ruler = computeRuler({ durationMs: total(), elapsedMs: total() - rem });
+    const idx = Math.min(bars.length - 1, ruler.bars.filter(b => b.fill >= 1).length);
     if (idx !== lastIdx) {
       bars.forEach((b, i) => b.style.setProperty('--f', i < idx ? 0 : 1));
       lastIdx = idx;
       document.documentElement.style.setProperty('--accent', bars[idx]?.style.getPropertyValue('--c') || '#fff');
     }
-    if (bars[idx]) bars[idx].style.setProperty('--f', Math.max(0, Math.min(1, frac)).toFixed(3));
+    if (bars[idx]) {
+      const fill = Math.max(0, Math.min(1, 1 - (ruler.bars[idx]?.fill ?? 0)));
+      bars[idx].style.setProperty('--f', fill.toFixed(3));
+    }
     el.fuse.parentElement.style.setProperty('--p', (rem / total()).toFixed(4));
 
     el.state.textContent = Date.now() < flashUntil

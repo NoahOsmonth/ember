@@ -44,7 +44,7 @@ module.exports = [
   },
   {
     files: ['src/renderer/**/*.js'],
-    languageOptions: { globals: { ...globals.browser } },
+    languageOptions: { sourceType: 'module', globals: { ...globals.browser } },
   },
   {
     files: ['src/core/**/*.js'],

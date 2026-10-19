@@ -16,10 +16,12 @@ src/
     widget/index.html           the always-on-top timer strip
     widget/widget.css           widget and settings styling
     settings/index.html         settings + tutorial window
-    shared/common.js            presets, themes, defaults and colour helpers shared by both windows
-  core/                         pure ES modules (timer, settings schema, ruler geometry)
+    shared/common.js            ES module facade over core: presets, defaults, chime, re-exports
+  core/                         pure ES modules (timer, settings schema, ruler geometry, palettes)
     package.json                declares "type": "module" for this subtree only
     schema.js                   versioned settings document: defaults, limits, migrations, normalize()
+    ruler.js                    unitFor() and computeRuler(): bars and fill fractions from ms
+    themes.js                   THEMES, themeNames(), resolveTheme(), barColor()
     README.md                   the purity rule for src/core
 docs/
   adr/                          architecture decision records

@@ -3,7 +3,7 @@ const { defineConfig } = require('vitest/config');
 module.exports = defineConfig({
   test: {
     environment: 'jsdom',
-    include: ['test/**/*.spec.js'],
+    include: ['test/**/*.spec.js', 'test/**/*.test.js'],
     exclude: ['test/e2e/**', 'node_modules/**', 'dist/**'],
     // A green run means something actually ran: no empty-suite escape hatch.
     passWithNoTests: false,

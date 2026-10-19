@@ -6,11 +6,13 @@
  * never throws, whatever bytes the caller hands it.
  */
 
+import { themeNames } from './themes.js';
+
 /** Schema version written by this build. */
 export const CURRENT_VERSION = 1;
 
-/** Themes the renderer knows how to paint. */
-export const THEMES = Object.freeze(['dusk', 'tide', 'solar', 'mono']);
+/** Themes the renderer knows how to paint, in picker order. */
+export const THEMES = Object.freeze(themeNames());
 
 /** Documented clamp ranges, used by validation and by the settings UI. */
 export const LIMITS = Object.freeze({
