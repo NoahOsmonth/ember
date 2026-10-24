@@ -97,12 +97,9 @@ comparison tolerance is the single `MAX_DIFF_PIXEL_RATIO` constant in
 
 ## Pull requests
 
-1. Start from an OpenSpec change under `openspec/changes/`; tick the task
-   checkboxes as you complete them.
-2. Run `npm run lint`, `npm run typecheck`, `npm test` and `npm run dist`
+1. Run `npm run lint`, `npm run typecheck`, `npm test` and `npm run dist`
    before pushing.
-3. Keep the CI job green; it runs the same commands on Windows.
-4. CODEOWNERS routes the review; every path has exactly one owner.
+2. Keep the CI job green; it runs the same commands on Windows.
 
 ## Commit messages
 

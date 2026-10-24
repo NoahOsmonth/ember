@@ -17,10 +17,6 @@ reports/
 logs/
 *.log
 
-# Local agent tooling state
-.dsh/
-.hormachuelos/
-
 # OS junk
 .DS_Store
 Thumbs.db

@@ -44,7 +44,6 @@ src/
 docs/
   adr/                          architecture decision records
   ARCHITECTURE.md               this file
-  DELIVERY-PLAN.md              wave-by-wave delivery plan
 electron-builder.yml            packaging configuration (Windows portable target)
 vitest.config.js                unit-test runner and coverage thresholds
 playwright.config.js            e2e and visual runner configuration
